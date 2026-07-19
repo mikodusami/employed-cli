@@ -1,4 +1,5 @@
-- after every unit change, make a commit to git follownig messages with scope such as feat(scope), docs(scope), etc.
+- after every single file change, make a commit to git follownig messages with scope such as feat(scope), docs(scope), etc.
 - follow the nasa guide for typescript applications
 - after every decison being made, update decisons.md with the timestamp, label of decision, and description.
 - update userflows.md with userflows to go through every layer that has been made.
+- update documentation.md every session to document and explain the files and all their functions utilizing links such that new devlopers could quickly navigate to a file and such if needed.
