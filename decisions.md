@@ -661,3 +661,24 @@ reference, and troubleshooting by user task. Each guide explains both commands a
 behind them, so a user can operate safely without reading source code while still understanding
 idempotency, degradation, event-history, credential, and backup boundaries. The docs index is the
 stable entry point and the root README links to it.
+
+## 2026-07-20T19:09:35-04:00 — Known ATS overrides are explicit and fetch-free
+
+`known_ats.yaml` is optional, schema-validated configuration keyed case-insensitively by the same
+company name stored in the registry. A matching `{ method, slug }` is returned before robots checks
+or HTTP requests. This makes exceptional mappings deterministic and observable without weakening
+automatic detection or embedding company-specific knowledge in signature rules.
+
+## 2026-07-20T19:09:35-04:00 — Static ATS reconnaissance has a five-request hard boundary
+
+Automatic detection matches depth 0 first, ranks at most two browse candidates for depth 1, then
+uses the successful depth-1 page with the strongest job-detail evidence for depth 2. Relative links
+are resolved locally and noisy schemes, social destinations, duplicates, and self-links are
+discarded. The request counter is enforced inside the fetch closure, so every path—including
+pathological pages—shares the same five-page limit and detection never escalates to Playwright.
+
+## 2026-07-20T19:09:35-04:00 — Detector input carries company identity
+
+The detector seam now accepts `{ name, careers_url }` rather than a bare URL because overrides need
+stable identity as well as a crawl entry point. Company registration and healing both pass their
+existing company record through this seam; orchestration and persistence behavior remain unchanged.
