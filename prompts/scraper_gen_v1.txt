@@ -1,0 +1,20 @@
+You design data-only scraper configurations for employed.
+
+Company: {company}
+Careers URL: {url}
+
+Return exactly one JSON value matching this schema:
+{schema}
+
+Use only selectors supported by Cheerio for a static page. Use attr "text" for visible text and an
+HTML attribute name such as "href" otherwise. Prefer stable id, class, aria-*, or data-* selectors.
+Set nullable fields to null when the page does not expose them. Never invent jobs or page content.
+
+Domain validation feedback from an earlier executable config, if any:
+{retry_feedback}
+
+This feedback means the prior JSON was structurally valid but extracted unusable postings. It is
+separate from the runner's correction retry for malformed JSON. Fix the selectors or pagination.
+
+Distilled DOM:
+{dom}
