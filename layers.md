@@ -1,3 +1,80 @@
+## Layer 5, Unit 3: CRM Commands — `apply`, `board`, `app`, `note`, `move`, `dismiss`
+
+**What this is:** The human-facing application tracker (§7.8's CRM half). Sync (Unit 2) already writes applications and events automatically; this unit gives _you_ direct control — promoting scraped jobs into applications, viewing the pipeline as a board, and managing status by hand. It completes the application/event repositories (sync built only the slices it needed) and establishes the status-transition rules in one place. Analytics (`stats`) is the next layer — this is the data-management surface it will read from.
+
+The discipline: every state change is an **event append** (§5 append-only audit) — the current `applications.status` is a cache of "the latest event," and the `events` log is the truth. This is what makes `stats`'s interview-rate computation (event-scan, not current-status) possible later. Never mutate status without logging the event; enforce it by routing all transitions through one service method.
+
+---
+
+**Deliverables:**
+
+**`src/db/repositories/applications.ts` + `events.ts` — completed:**
+
+Extend beyond sync's slice: `ApplicationRepository` gains `findById`, `list(filter?)`, `listByStatus`, `updateResumeVersion`, `updateNotes`, `touchActivity` (bumps `last_activity_at`), `setFirstResponse` (sets `first_response_at` on first non-applied event). `EventRepository` gains `listForApplication(id)` ordered by `at`. These are the reads `board`, `app`, and `stats` consume.
+
+**`src/services/application.ts` — `ApplicationService` (the transition authority):**
+
+```typescript
+async createFromJob(jobId: number, opts: { resumeVersion?: string }): Promise<Application>;
+async createManual(input: { company: string; role?: string; status?: AppStatus }): Promise<Application>;
+async transition(id: number, to: AppStatus, opts: { note?: string }): Promise<Application>;
+async addNote(id: number, text: string): Promise<void>;
+list(filter?: AppFilter): ApplicationRow[];
+detail(id: number): ApplicationDetail;   // application + full event history
+```
+
+`transition` is the **single chokepoint** for status change — used by `move`, by sync (refactor Unit 2's direct writes to call this), and by `apply`. It: validates the transition (a small allowed-transitions map — e.g. can't go `rejected → oa`; but keep it permissive with a warning rather than hard-blocking, since real job searches are messy and a recruiter _can_ revive a dead thread — log unusual transitions, don't forbid them), updates `applications.status`, appends the matching `events` row, calls `setFirstResponse`/`touchActivity` as appropriate. This consolidation is why sync's transitions and manual transitions produce identical, auditable history.
+
+`createFromJob`: pulls the job (title→role, company via job's company), creates the application linked by `job_id`, appends the initial `applied` event, records `resume_version`. `createManual`: for applications with no scraped job (Gmail-discovered, or roles you applied to off-platform) — `job_id` null, `company_name` denormalized (the schema already supports this dual origin).
+
+**`src/commands/apply.ts` — `employed apply <jobId> [--resume <label>]`:**
+
+Promotes a scraped job into a tracked application via `createFromJob`. Guards: job exists, not already applied (idempotent — re-applying shows the existing application rather than duplicating). Confirms with the job title + company. `--resume backend-v2` tags the résumé version (this feeds `stats`'s per-résumé outcome analysis — the label is free-form but consistency matters; consider surfacing previously-used labels as hints).
+
+**`src/commands/board.ts` — `employed board`:**
+
+The pipeline view: columns **Applied / OA / Interview / Offer / Rejected** rendered as terminal tables (via the UI abstraction), each card showing company, role, per-card age (days since `last_activity_at` — the `relativeTime` helper from Layer 2), résumé version. Rejected column can be collapsed/summarized by default (`--all` to expand) — a long search accumulates many rejections and they shouldn't drown the active pipeline. Empty state guides toward `apply`/`sync`.
+
+**`src/commands/app.ts` — `employed app <id>`:**
+
+Full detail of one application: header (company, role, status, résumé, key dates) + the complete event timeline from `EventRepository.listForApplication` — the audit trail, oldest to newest, each event with its date, type, and note. This is where the append-only log pays off visibly.
+
+**`src/commands/note.ts` — `employed note <id> "<text>"`:**
+
+Appends a `note`-type event (doesn't change status). Bumps `last_activity_at`.
+
+**`src/commands/move.ts` — `employed move <id> <status>`:**
+
+Manual status transition via `ApplicationService.transition`. `<status>` validated against the `AppStatus` enum with a helpful error listing valid values. An unusual transition prints a one-line heads-up but proceeds.
+
+**`src/commands/dismiss.ts` — `employed dismiss <jobId>`:**
+
+The job-lifecycle command (§7.5, distinct from applications) — marks a _scraped job_ `dismissed` so it's excluded from future reports. Not an application action; it's saying "not interested, stop showing me this." `JobRepository.dismiss` already exists (Layer 2) — this is its command surface. (v1: dismissal trains nothing, per §7.5/§16 — just filters.)
+
+**Architectural notes:**
+
+- **One transition method, always.** If any code path sets `applications.status` without going through `transition`, the audit log develops holes and `stats` silently lies. Refactor sync (Unit 2) to route through it now — don't leave two write paths.
+- Applications have **two origins** (scraped-job-linked and manual/Gmail) and the schema/service handle both uniformly — `board` and `stats` never care which origin a row has. Keep that invariance.
+- `dismiss` (jobs) vs `move`/status (applications) are different domains — a dismissed job you never applied to, vs. a rejected application you did. Keep the vocabulary distinct in help text so they're never confused.
+- Transition validation is **advisory, not restrictive** — the tool serves a messy real-world process; it warns on the weird but never blocks the user from recording what actually happened.
+
+**Acceptance criteria:**
+
+- `apply <jobId>` creates a linked application with an initial `applied` event and the résumé label; re-running shows the existing app, no duplicate.
+- `createManual` produces a `job_id`-null application that appears in `board` identically to a linked one.
+- `transition` appends an event every time, updates status, sets `first_response_at` on the first post-applied event, bumps `last_activity_at`; an unusual transition warns but succeeds.
+- Sync's status updates (Unit 2) now route through `transition` — verify a sync-driven rejection produces the same event shape as a manual `move ... rejected`.
+- `board` renders five columns with correct membership and per-card ages; `--all` expands rejected.
+- `app <id>` shows the full chronological event timeline including sync-generated `email` events and manual notes.
+- `note` appends without changing status; `move` to an invalid status errors with the valid list.
+- `dismiss <jobId>` removes the job from subsequent reports (verify `new`/report excludes it) without touching any application.
+- All CRM writes auditable via the events log; no status write bypasses `transition` (grep/architecture check).
+- Suite offline on `:memory:`.
+
+---
+
+That completes **Layer 5** — Gmail sync and the full application CRM are live. Say **next** for Layer 6, Unit 1: `employed stats` (§7.8) — the SQL analytics, sparkline, and follow-up nudges.
+
 ## Layer 5, Unit 2: Gmail Sync via MCP — Fetch, AI Fallback, Ledger, Sync Modes
 
 **What this is:** Wiring the pure classifier (Unit 1) to real email. The AI CLI (Claude Code or Codex) does the _retrieval_ through its own Gmail MCP connection — so `employed` never touches Google credentials (§8.2, and the whole reason the delegation architecture exists). Rules classify the majority for free; the low-confidence tail batches to the AI. An idempotency ledger means the same email is never processed twice. Two modes: interactive (you approve) and cron (high-confidence auto-applies, rest defers).
