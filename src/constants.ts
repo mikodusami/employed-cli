@@ -34,3 +34,19 @@ export const REPORTS_DIR = path.join(EMPLOYED_DIR, 'reports');
 
 /** Application log directory. */
 export const LOGS_DIR = path.join(EMPLOYED_DIR, 'logs');
+
+/** Pidfile guarding against overlapping `employed run` invocations. */
+export const RUN_LOCK_PATH = path.join(EMPLOYED_DIR, 'run.lock');
+
+/** macOS launchd job label and generated agent plist path. */
+export const LAUNCHD_LABEL = 'com.employed.daily';
+export const LAUNCHD_PLIST_PATH = path.join(
+  os.homedir(),
+  'Library',
+  'LaunchAgents',
+  `${LAUNCHD_LABEL}.plist`,
+);
+
+/** Comment marker identifying the employed-managed line in the user's Linux crontab. */
+export const CRON_MARKER = '# employed-daily (managed by `employed schedule`)';
+
