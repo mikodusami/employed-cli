@@ -422,3 +422,96 @@ and a miss there returns `null` rather than guessing.
 Classifier and extractor remain fully independent: neither module imports the other, enforced by a
 source-grep test in each suite, matching the spec's "classification doesn't depend on company,
 extraction doesn't depend on type."
+
+## 2026-07-20T16:04:31-04:00 — Gmail retrieval query is original, not ported (no prototype existed)
+
+Same situation as Unit 1: the layer spec says to port the prototype's §5 query verbatim, but no
+prototype exists. `buildGmailQuery` in `src/gmail/fetch.ts` is original: `newer_than:{days}d` plus an
+OR-list of known ATS sender domains (Greenhouse, Lever, Ashby, Workday, SmartRecruiters, iCIMS,
+Workable) and a generic subject fallback. Labeled as invented in the file's header comment, same as
+the classifier/extractor. Reconcile with the owner's real query if one surfaces.
+
+## 2026-07-20T16:04:31-04:00 — `AiTask.noCache` is an opt-in flag, checked at both cache read and write
+
+`EmailFetcher` needs every call to hit Gmail fresh (a cached "yesterday's inbox" snapshot would be
+actively wrong), while `AiTailClassifier` needs the opposite — the same batch of ambiguous emails
+should classify identically and for free on a retry. Rather than two runner code paths, `AiTask`
+gained one optional `noCache` boolean that `DefaultAiRunner.runJson` checks before reading the cache
+and before writing to it. Default (`undefined`/`false`) preserves every existing task's behavior
+unchanged; only `EmailFetcher` sets it to `true`.
+
+## 2026-07-20T16:04:31-04:00 — CRM repository timestamps are always caller-supplied, never SQL-computed
+
+Following the Layer 4 Unit 3 lesson about `CURRENT_TIMESTAMP` (SQL, space-separated) silently
+diverging from `toISOString()` (JS, `T`-separated) on the same calendar day, `ApplicationRepository
+.create`/`.updateStatus` and `EventRepository.append` all take an explicit timestamp parameter from
+the caller instead of computing one in SQL. `SyncService` computes exactly one `nowIso` per `run()`
+call and threads it through every write in that run, so an application's `created_at`, its
+`last_activity_at`, and its sync event's `at` are always the identical string when they result from
+the same sync pass.
+
+`ApplicationRepository.findByCompanyRole` matches `company_name` case-insensitively and treats a
+missing `role` on either side (the query or the stored row) as compatible rather than a mismatch,
+since email-extracted roles are best-effort and often absent.
+
+## 2026-07-20T16:04:31-04:00 — A proposal's action (create vs. update) follows from a DB match, not type
+
+The spec frames sync's output as "create-application, or status-update on an existing application."
+Rather than hard-coding `applied` emails to always create and every other type to always require an
+existing match, `SyncService` looks up `findByCompanyRole` for every resolved email and infers the
+action from whether a match exists: found → `update`, not found → `create`. This means an `interview`
+or `offer` email for a company you never explicitly tracked still bootstraps a CRM record instead of
+being silently dropped, which is more useful for a personal tool than requiring `apply` to have been
+run first for every company. Documented here since it's an interpretation, not a literal restatement
+of the spec's wording.
+
+## 2026-07-20T16:04:31-04:00 — Cron auto-apply gate: rule-high-confidence AND an existing-application match
+
+"High-confidence, exact-company-match status updates" is implemented as
+`proposal.confidence === 'high' && proposal.action === 'update'`. Because the AI tail only ever
+handles emails the rule classifier already gave up on, every AI-tail-resolved proposal is
+`confidence: 'low'` by construction — so cron mode never auto-applies an AI-resolved classification,
+regardless of how confident the AI sounded. This is a hard safety boundary, not a tunable threshold.
+`action === 'update'` additionally excludes cron from ever auto-creating a new CRM record; bootstrapping
+a record it's never seen before always waits for a human to confirm interactively.
+
+## 2026-07-20T16:04:31-04:00 — Deferred cron proposals are ledgered but not auto-resurfaced (scope boundary)
+
+The spec says cron mode's deferred proposals "defer to the next interactive sync" while also saying
+"all fetched threads get ledgered regardless" — read literally together, these are in tension: the
+ledger's `seen`-filter is exactly what prevents a thread from being fetched/considered again. This
+unit resolves it narrowly: every cron-mode proposal (auto-applied or deferred) is ledgered
+(`application_id` null for deferred ones, `classified_as` still recording the resolved type), so cron
+never re-fetches or re-classifies the same raw email every morning. **Automatically re-surfacing a
+deferred proposal in a later interactive sync is out of scope for this unit** — it would need the
+ledger (or a new table) to persist enough of the proposal (company, role, type) to reconstruct it
+without the original email, which isn't part of this unit's schema. Flagging this as a known gap
+rather than guessing at unspecified schema; reconcile if the owner wants deferred proposals to
+resurface.
+
+## 2026-07-20T16:04:31-04:00 — Every sync-driven event is tagged `type: 'email'`
+
+`EventType` already includes a generic `email` value distinct from `applied`/`oa`/`interview`/
+`offer`/`rejected`/`note`. Every event `SyncService` appends uses `type: 'email'` with a `note`
+describing the actual resolved classification (e.g. "Classified as rejected via email sync (thread
+t1)."), so the event log can distinguish "this status change was auto-detected from email" from a
+manually-run Unit 3 CRM command, which is expected to set a more specific event type directly.
+
+## 2026-07-20T16:04:31-04:00 — `SyncService` never depends on `@clack/prompts`; the command injects a prompter
+
+`ProposalPrompter` is a one-method interface (`selectProposals`); `commands/sync.ts` is the only file
+that imports `@clack/prompts`, wrapping it in `ClackProposalPrompter`. `RunService`'s cron integration
+passes a `NEVER_PROMPTER` stub that would throw if ever called (it never is — cron mode's own code
+path never invokes the prompter). This keeps `SyncService` fully unit-testable with a "scriptable
+prompt fake" exactly as the acceptance criteria describe, with no UI library or terminal interaction
+anywhere in its test suite.
+
+## 2026-07-20T16:04:31-04:00 — `run`'s Gmail hook degrades to a no-op on any failure, with a 2-day window
+
+`RunService.syncGmail` wraps `SyncService.run('cron', ...)` in a try/catch that swallows any error
+(Gmail MCP not yet configured, a malformed AI response, anything) and returns no auto-applied
+updates — the same "one part's failure never aborts the run" discipline the scraping loop already
+follows. The sync window is a fixed 2 days rather than a new config field: `run` fires daily, so a
+2-day trailing window still covers a missed day without inventing config surface the spec didn't ask
+for. `buildDailyReport` gained an `autoApplied` override (mirroring the `runStats` override from Layer
+4 Unit 3) so `RunService` can hand it cron sync's results directly.

@@ -947,3 +947,91 @@ files directly rather than touching `$EMPLOYED_DIR`.
    entry, and either adjust the relevant pattern in `classify.ts`/`extract-company.ts` (re-running
    `npm test` to confirm nothing else regresses) or leave the fixture as a known failing case to
    revisit once more real samples are collected.
+
+# Layer 5, Unit 2 — Gmail sync via MCP
+
+`employed` never touches Google credentials directly: retrieval and tail classification go through
+whichever AI CLI (Claude Code or Codex) you already have configured with its own Gmail MCP
+connection. Several flows below explicitly disable AI to verify the clean-degradation path without
+making a real AI CLI call; only Flow 6 makes one, and only if you choose to run it.
+
+### Flow 1: Discover the sync command
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed --help` and confirm `sync [options]` appears in the command list.
+4. Run `employed sync --help` and confirm `--days <n>` is documented with a default of `30`.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Run the sync pipeline's automated test suite
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Confirm `rules classify the confident majority; only low-confidence goes to the AI tail`
+   passes — proving high-confidence rule matches skip the AI entirely and only the rule
+   classifier's fall-through emails are sent to the (fake) AI tail classifier.
+4. Confirm `ledger idempotency: a second sync over the same inbox processes 0 new threads` passes.
+5. Confirm `cron: high-confidence exact-match auto-applies; low-confidence defers` passes — a
+   rule-confident rejection for a tracked company updates that application and appears in
+   `autoApplied`, while an AI-tail-resolved email for the same company is deferred, not applied.
+6. Confirm `interactive: accepting writes the CRM change; rejecting still ledgers it` passes.
+7. Confirm `every CRM write from sync appends a corresponding events row` passes.
+8. Confirm `ai === null: sync no-ops cleanly, nothing written, exit successful` passes.
+
+### Flow 3: Verify EMAIL_FETCH always hits AI fresh, EMAIL_CLASSIFY caches, and empty batches are free
+
+1. Run `npm test`.
+2. Confirm `EmailFetcher bypasses the cache: two fetches make two AI calls` passes.
+3. Confirm `classifying the same batch twice is a single cached AI call` passes.
+4. Confirm `an empty low-confidence batch makes zero AI calls` passes.
+5. Confirm `noCache tasks skip both the cache read and the cache write` passes (the general
+   `AiTask.noCache` mechanism `EmailFetcher` relies on).
+
+### Flow 4: See `employed sync` degrade cleanly without a real AI call
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. In `$EMPLOYED_DIR/config.yaml`, set the top-level `ai.enabled` value to `false`.
+4. Run `employed sync --no-animation`.
+5. Confirm it prints a message that Gmail sync needs an AI provider with Gmail MCP configured,
+   naming `employed doctor`, and exits successfully without writing anything.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: See `run`'s reserved Gmail hook stay harmless when Gmail MCP isn't set up
+
+This flow uses `--no-ai` specifically so it never makes a real AI CLI call, since AI availability
+alone is what gates whether `run` attempts cron-mode sync.
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation --tier A`.
+4. Run `employed run --no-animation --no-ai`.
+5. Confirm the run completes normally exactly as in the Layer 4, Unit 3 flows (scrapes, scores,
+   writes a report) — the Gmail hook is skipped entirely because AI is off, so it has no effect.
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT COUNT(*) FROM applications;"` and confirm it
+   reports `0`, since no sync ran.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 6 (optional, makes a real AI call): Try live Gmail sync end to end
+
+Only run this if you have Claude Code or Codex configured with a working Gmail MCP connection —
+otherwise this will simply fail to fetch anything, which is expected and harmless (Flow 5 already
+covers the "not configured" path without spending a real AI call).
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed sync --days 30 --no-animation`.
+4. Confirm it reports how many threads were fetched and how many are new.
+5. If any proposals appear, confirm the multi-select prompt lists company, role (when known), and
+   whether it would create a new application or update an existing one; accept or reject a few and
+   confirm the command's summary table (Applied/Deferred/Ignored/Unresolved) matches your choices.
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT company_name, role, status FROM applications;"`
+   and `SELECT thread_id, application_id, classified_as FROM email_threads;"` and confirm they
+   reflect exactly what you accepted or rejected.
+7. Run `employed sync --days 30 --no-animation` again and confirm every previously-seen thread is
+   excluded (0 new among them), proving the ledger works against your real inbox too.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
