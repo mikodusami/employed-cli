@@ -1,7 +1,7 @@
 /** Registers single-company job scanning orchestration. */
 import type { Command } from 'commander';
 
-import { ScrapeService } from '../services/scrape.js';
+import { ScrapeRuntime } from '../services/scrape-runtime.js';
 import type { CommandContext } from './types.js';
 
 interface ScanOptions {
@@ -25,24 +25,40 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
   }
 
   const spinner = context.ui.spinner(`Fetching jobs for ${company.name}`).start();
-  const service = new ScrapeService(context.repos, context.http);
-  const result = await service.scrapeCompany(company);
-  if (result.status === 'skipped') {
-    spinner.fail(`${company.name} skipped: ${result.reason}`);
-    return;
-  }
-  if (result.status === 'failed') {
-    spinner.fail(`${company.name} (${result.method}) failed: ${result.reason}`);
-    return;
-  }
+  const runtime = new ScrapeRuntime({
+    repositories: context.repos,
+    http: context.http,
+    detector: context.detector,
+    ai: context.ai,
+    config: context.config.loadApp(),
+  });
+  try {
+    const result = await runtime.scraper.scrapeCompany(company);
+    if (result.status === 'skipped') {
+      spinner.fail(`${company.name} skipped: ${result.reason}`);
+      return;
+    }
+    if (result.status === 'failed') {
+      spinner.fail(`${company.name} (${result.method}) failed: ${result.reason}`);
+      if (result.heal) {
+        context.ui.warn(result.heal.note);
+      }
+      return;
+    }
 
-  spinner.succeed(
-    `${company.name} (${result.method}): ${result.seen} seen, ${result.new} new`,
-  );
-  if (result.newJobs.length > 0) {
-    context.ui.table(
-      ['Title', 'Location', 'URL'],
-      result.newJobs.map((job) => [job.title, job.location ?? '—', job.url]),
+    spinner.succeed(
+      `${company.name} (${result.method}): ${result.seen} seen, ${result.new} new`,
     );
+    if (result.heal) {
+      context.ui.info(result.heal.note);
+    }
+    if (result.newJobs.length > 0) {
+      context.ui.table(
+        ['Title', 'Location', 'URL'],
+        result.newJobs.map((job) => [job.title, job.location ?? '—', job.url]),
+      );
+    }
+  } finally {
+    await runtime.close();
   }
 }
