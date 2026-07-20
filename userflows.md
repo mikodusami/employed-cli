@@ -704,3 +704,172 @@ files and scanned jobs are never reused between flows.
    than a duplicate or appended report.
 7. Run `rm -rf "$EMPLOYED_DIR"`.
 8. Run `unset EMPLOYED_DIR`.
+
+## Layer 4, Unit 3 — `employed run` orchestration and scheduler
+
+Run `npm run build` first. Every flow below creates and removes its own Employed workspace; no
+companies, jobs, runs, or lock files are reused between flows. Because `export` only affects the
+current shell, run every step of a flow in one continuous terminal session — do not split a flow
+across separate shells or the isolation variable will not carry over.
+
+### Flow 1: Discover the new commands
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed --help` and confirm `run [options]` and `schedule` both appear in the command list.
+4. Run `employed run --help` and confirm `--email`, `--no-ai`, and `--tier <tiers>` are documented.
+5. Run `employed schedule --help` and confirm `install`, `remove`, and `status` subcommands appear.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Run an empty workspace end to end
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed run --no-animation --no-ai`.
+4. Confirm the terminal digest reports `0 companies scanned, 0 new jobs, 0 failures` and a
+   Report/Jobs seen/Jobs new/Jobs closed/Scrapers healed/Scrapers broken/AI calls table follows.
+5. Run `ls "$EMPLOYED_DIR/reports"` and confirm today's `YYYY-MM-DD.md` exists, and open it to
+   confirm it reads `0 companies scanned · 0 jobs seen · 0 new · 0 failures · 0 healed · 0 broken`.
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT started_at, finished_at, companies_scanned FROM runs;"`
+   and confirm exactly one row with a non-null `finished_at`.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Scrape, score, and report a real company through `run`
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation --tier A`
+   and confirm it detects `lever`.
+4. Run `employed run --no-animation --no-ai`.
+5. Confirm the digest shows `1 companies scanned`, a nonzero new-jobs count, and `0 failures`.
+6. Open today's file in `$EMPLOYED_DIR/reports` and confirm its Run line's counts match the digest,
+   and that new jobs appear grouped by band exactly as they do for `employed new`.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify same-day idempotency
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add the same Highspot board as Flow 3.
+4. Run `employed run --no-animation --no-ai` and note the new-jobs count.
+5. Run `employed run --no-animation --no-ai` again.
+6. Confirm the second run reports `0 new jobs` with the same nonzero jobs-seen count, the report
+   file's path and content are unchanged aside from the run line, and
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT COUNT(*) FROM runs;"` reports `2`.
+7. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT COUNT(*) FROM jobs;"` and confirm the count did
+   not double.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Verify one company's failure never aborts the run
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add the Highspot board from Flow 3, tier A.
+4. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "INSERT INTO companies (name, careers_url, tier, scrape_method, slug, health, created_at) VALUES ('Bad Co', 'https://example.com/careers', 'A', 'greenhouse', NULL, 'untested', CURRENT_TIMESTAMP);"`
+   to register a company whose adapter cannot run.
+5. Run `employed run --no-animation --no-ai`.
+6. Confirm the digest still reports `2 companies scanned`, the Highspot jobs are present, and
+   exactly one failure line mentions `Bad Co` and a board slug.
+7. Open today's report and confirm the run stats show `1 failures` rather than a crashed command.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Verify the tier scheduler and the `--tier` override
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run
+   `employed company add "C Tier Co" --url https://jobs.lever.co/highspot --no-animation --tier C`.
+4. Run `employed run --no-animation --no-ai` (the first run; run index 1 excludes tier C) and confirm
+   the digest reports `0 companies scanned`.
+5. Run `employed run --no-animation --no-ai --tier C` and confirm this run reports
+   `1 companies scanned`, proving the override bypasses the schedule.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 7: Verify the two-run lifecycle closure
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add the Highspot board from Flow 3 and run `employed run --no-animation --no-ai` once so its
+   jobs and `last_success` are populated.
+4. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "UPDATE companies SET last_success = '2020-01-01T00:00:00.000Z' WHERE name = 'Highspot';"`
+   to simulate that the previous successful scrape happened long ago.
+5. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "INSERT INTO jobs (company_id, dedupe_key, title, url, status, first_seen, last_seen) SELECT id, 'stale-flow-7', 'Stale Fixture Role', 'https://example.com/stale', 'open', '2019-12-01T00:00:00.000Z', '2019-12-01T00:00:00.000Z' FROM companies WHERE name = 'Highspot';"`
+   to insert a job that was already missing before that backdated success.
+6. Run `employed run --no-animation --no-ai` again and confirm the digest's `Jobs closed` value is
+   at least `1`.
+7. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT status FROM jobs WHERE dedupe_key = 'stale-flow-7';"`
+   and confirm it now reads `closed`.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 8: Verify the run lock refuses collisions and reclaims stale locks
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `mkdir -p "$EMPLOYED_DIR" && echo "$$" > "$EMPLOYED_DIR/run.lock"` to simulate a lock held by
+   this shell's own (currently alive) process.
+4. Run `employed run --no-animation --no-ai` and confirm it warns that a run is already in progress
+   and exits without scraping or writing a report for that invocation.
+5. Run `echo "999999999" > "$EMPLOYED_DIR/run.lock"` to simulate a lock left by a dead process.
+6. Run `employed run --no-animation --no-ai` and confirm this time it runs normally and the lock
+   file no longer contains the stale pid afterward (`cat "$EMPLOYED_DIR/run.lock"` reports no such
+   file, since the lock is released on completion).
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 9: Verify `--no-ai` degradation and the AI call counter
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add the Highspot board from Flow 3.
+4. Run `employed run --no-animation --no-ai`.
+5. Confirm the digest's `AI calls` reads `0` and the run still scrapes and scores Highspot's jobs
+   normally, since Tier-1 ATS scraping never depends on AI.
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT claude_calls FROM runs ORDER BY id DESC LIMIT 1;"`
+   and confirm it also reads `0`.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 10: See the last run in `doctor`
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed doctor --no-animation` and confirm its `Last run` section reports that no run has
+   been recorded yet.
+4. Add the Highspot board from Flow 3 and run `employed run --no-animation --no-ai`.
+5. Run `employed doctor --no-animation` again and confirm the `Last run` section now shows a
+   `Started` time, a `Duration`, and matching `New jobs`/`Failures` counts.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 11: Install, inspect, and remove the OS-level daily schedule
+
+This flow writes a **real** launchd agent (macOS) or crontab line (Linux) to your actual system,
+because scheduling is inherently a real-machine action outside the isolated `$EMPLOYED_DIR`. Only
+run it if you are comfortable with that, and always finish with the `remove` step even if an earlier
+step fails.
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed schedule status --no-animation` and confirm it reports no schedule installed.
+4. Run `employed schedule install --at 07:30 --no-animation`.
+5. Confirm the command prints the generated plist (macOS) or crontab line (Linux) — including an
+   absolute path to the `node` binary and to `cli.js` — before printing the success line.
+6. Run `employed schedule install --at 08:00 --no-animation` again without `--force` and confirm it
+   refuses, naming `employed schedule remove` or `--force` as the way forward.
+7. Run `employed schedule status --no-animation` and confirm it reports `installed: yes` with time
+   `07:30` and a plausible next-run timestamp.
+8. Run `employed schedule remove --no-animation` and confirm it reports the schedule was removed.
+9. Run `employed schedule status --no-animation` once more and confirm it again reports nothing
+   installed.
+10. Run `rm -rf "$EMPLOYED_DIR"`.
+11. Run `unset EMPLOYED_DIR`.

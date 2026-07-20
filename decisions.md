@@ -290,3 +290,97 @@ leaving room for a future rolling-window option. Band selection filters the repo
 presentation, so terminal, JSON, and the written Markdown export cannot disagree. JSON mode uses the
 UI's raw-output boundary and emits exactly one serialized model with no banners or status messages;
 its shape is treated as a semi-public dashboard contract.
+
+## 2026-07-20T15:18:17-04:00 — Run orchestration reuses `ScrapeRuntime`; owns only run-scoped state
+
+`RunService.execute` is pure orchestration: it constructs one `ScrapeRuntime` per run (the same
+composition already used by `company add`, `import`, and `scan`) so the browser pool, heal budget,
+and generator are wired identically everywhere, then loops over selected companies calling nothing
+but prior units' services. The only state `RunService` itself owns is the run accumulator (counts,
+failures), the `runs` row lifecycle, and the tier index. If a future change needs `run` to know about
+scraping or scoring internals directly, that logic is misplaced and belongs in a service.
+
+A per-company `try/catch` inside the loop converts any exception — expected `failed` results and
+unexpected throws alike — into a `RunFailure` entry rather than aborting the run, satisfying "one
+company's failure never aborts the loop" even for defects outside `ScrapeService`'s own containment.
+Genuine run-level crashes (for example a report-write failure) are left to propagate; a `finally`
+block unconditionally closes the `runs` row with whatever the accumulator holds and closes the
+browser pool, so a crash still leaves an accurate, non-hanging observability record.
+
+## 2026-07-20T15:18:17-04:00 — Tier scheduler is a pure function; run index is derived, not stored
+
+`selectCompaniesForRun(companies, runIndex)` is a pure filter with no I/O, unit-tested directly against
+run indexes 1, 2, 3, and 6 to pin the exact staggering: tier A every run; tier B every run except
+`generated-playwright` companies, which run only on even indexes; tier C only when the index is a
+multiple of three. `--tier` bypasses this filter entirely rather than composing with it, matching "the
+override ignores the schedule" rather than intersecting with it.
+
+The run index itself is `repositories.runs.count()` after `runs.start()` inserts the current row —
+counting existing rows rather than adding a `meta` key-value table (the layer spec's other suggested
+option). Every `employed run` invocation inserts exactly one row, so the count is already the correct
+monotonic index with no migration and no extra table to keep in sync.
+
+## 2026-07-20T15:18:17-04:00 — Lifecycle closure compares timestamps instead of counting misses
+
+`markClosedIfUnseen(companyId, cutoff)` closes an open job only when its `last_seen` predates the
+company's *previous* successful scrape, captured by `RunService` before calling `scrapeCompany`. A job
+missing on the previous scrape still has `last_seen` equal to that scrape's timestamp (first miss, left
+open); a job still missing now has a `last_seen` older than that cutoff (second consecutive miss,
+closed). This reuses `jobs.last_seen` and `companies.last_success`, needing no dedicated miss counter
+or extra column.
+
+This exposed a real format inconsistency the comparison depends on: `companies.last_success` was
+written with SQL `CURRENT_TIMESTAMP` (`YYYY-MM-DD HH:MM:SS`) while `jobs.last_seen` is a JS
+`toISOString()` value (`T`-separated, millisecond precision, `Z` suffix). String comparison across
+those two formats does not reliably reflect chronological order on the same calendar day.
+`CompanyRepository.recordSuccess` now takes an explicit `occurredAt` (defaulting to
+`new Date().toISOString()`), and `ScrapeService` passes the same `today` timestamp it uses for the job
+upserts in the same transaction, so both columns share one clock and one format.
+
+## 2026-07-20T15:18:17-04:00 — Report stats are handed to the builder, not re-read mid-close
+
+`buildDailyReport` now accepts an optional `runStats` override. `RunService` computes its own
+`RunStats` from the accumulator and passes it directly, because the authoritative `runs` row is not
+updated until the `finally` block that runs after the report is written — reading `runs.latest()` at
+report-build time would see the *previous* run's row, not this one. `employed new` is unaffected: it
+never passes an override, so it keeps deriving stats from the persisted row exactly as before.
+`RunService` also accepts an injectable `reportsDirectory`, defaulting to the real reports path, so
+tests never write outside a temp directory.
+
+## 2026-07-20T15:18:17-04:00 — Run lock is a command-level concern, not a `RunService` concern
+
+`acquireRunLock`/`release` live in `util/lock.ts` as a plain pidfile: written at acquisition, checked
+for liveness with a zero-signal `process.kill` probe, and silently reclaimed when the owning pid is
+dead. The `run` command acquires the lock before constructing `RunService` and releases it in its own
+`finally`, keeping `RunService` itself lock-free and fully testable in-memory — unit tests never touch
+`~/.employed/run.lock`, and a stale lock left by a crashed process never permanently blocks future runs.
+
+## 2026-07-20T15:18:17-04:00 — Scheduler installer generates before writing, and never clobbers silently
+
+`ScheduleService` separates `buildArtifact` (pure, platform-only, no disk or OS calls) from `install`
+(writes the file, then loads/updates the OS scheduler). `employed schedule install` calls
+`buildArtifact` first and prints the result before `install` ever touches disk, satisfying "generated
+artifact shown before writing" without requiring an interactive confirmation prompt. `install` refuses
+a second installation unless `--force` is passed, rather than overwriting a running schedule outright.
+
+Both the `launchctl`/`crontab` invocations and the binary/script path resolution
+(`process.execPath` + `process.argv[1]`) are constructor-injected, mirroring the existing
+`ProcessRunner`/`BrowserLauncher` seams — tests substitute a fake `CommandRunner` and temp file paths
+so no test run ever touches a real launch agent or the developer's actual crontab. The Linux cron
+marker comment lives on the *same* line as the scheduled command (not a separate line), since
+`schedule remove`/`status` locate the managed entry by scanning for that marker.
+
+## 2026-07-20T15:18:17-04:00 — `AiRunner.callCount()` is optional so existing test doubles stay valid
+
+`runs.claude_calls` (the column name predates multi-provider support and is intentionally left as-is
+to avoid an unrelated migration) needed a way to read the AI budget counter already tracked inside
+`DefaultAiRunner`. `callCount()` was added to the `AiRunner` interface as an *optional* method precisely
+so the several hand-written test doubles implementing `AiRunner` elsewhere in the suite keep compiling
+unchanged; `RunService` reads it as `ai?.callCount?.() ?? 0`.
+
+## 2026-07-20T15:18:17-04:00 — `doctor` gained a last-run diagnostic instead of a new command
+
+Per the layer's observability note, `DoctorService` now also reads `repositories.runs.latest()` and
+reports started time, duration, new-job count, and failure count — a small addition to an existing
+command rather than a new one, since `doctor` already owns environment diagnostics and the `runs`
+table only becomes meaningful once this unit exists.
