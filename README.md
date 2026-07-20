@@ -131,6 +131,7 @@ Global flags: `--no-animation` selects log-safe plain output; `--verbose` shows 
 
 - `config.yaml` — scheduling, HTTP, AI, email, browser/healing, and analytics settings
 - `companies.yaml` — watched careers pages and tiers
+- `known_ats.yaml` — optional company-to-provider overrides for difficult careers sites
 - `keywords.yaml` — title, description, and negative scoring weights
 
 Set `EMPLOYED_DIR` to point all state at another directory, which is useful for isolated testing.
