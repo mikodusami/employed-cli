@@ -10,6 +10,7 @@ import { writeReport } from '../report/writer.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { HttpClient } from '../util/http.js';
 import { ApplicationService } from './application.js';
+import { EmailService } from './email.js';
 import { ScrapeRuntime } from './scrape-runtime.js';
 import type { ProposalPrompter } from './sync.js';
 import { SyncService } from './sync.js';
@@ -43,11 +44,17 @@ export interface RunSummary {
   aiCalls: number;
   failures: readonly RunFailure[];
   reportPath: string;
+  email: { attempted: boolean; sent: boolean; error: string | null };
 }
 
 /** `--tier` bypasses the schedule entirely; omitted, the tier scheduler picks the run's set. */
 export interface RunOptions {
   tiers?: readonly Tier[];
+  email?: boolean;
+}
+
+interface DigestSender {
+  sendDigest(report: ReturnType<typeof buildDailyReport>): Promise<void>;
 }
 
 export interface RunServiceDependencies {
@@ -62,6 +69,8 @@ export interface RunServiceDependencies {
   reportsDirectory?: string;
   /** Overrides the constructed cron `SyncService`; tests inject a fake instead of real AI/Gmail. */
   syncService?: SyncService;
+  /** Overrides SMTP delivery; tests use an in-memory transport. */
+  emailService?: DigestSender;
 }
 
 /** Mutable counters threaded through the per-company loop. */
@@ -108,6 +117,7 @@ export class RunService {
     let finishedAt = '';
     let brokenCount = 0;
     let aiCalls = 0;
+    const email = { attempted: false, sent: false, error: null as string | null };
 
     try {
       const runIndex = repositories.runs.count();
@@ -141,6 +151,17 @@ export class RunService {
         autoApplied,
       });
       reportPath = writeReport(report, this.dependencies.reportsDirectory);
+      if (this.dependencies.config.email.enabled || options.email) {
+        email.attempted = true;
+        try {
+          const emailService =
+            this.dependencies.emailService ?? new EmailService(this.dependencies.config.email);
+          await emailService.sendDigest(report);
+          email.sent = true;
+        } catch (error: unknown) {
+          email.error = error instanceof Error ? error.message : String(error);
+        }
+      }
     } finally {
       finishedAt = this.now().toISOString();
       repositories.runs.finish({
@@ -172,6 +193,7 @@ export class RunService {
       aiCalls,
       failures: accumulator.failures,
       reportPath,
+      email,
     };
   }
 
