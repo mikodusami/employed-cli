@@ -15,8 +15,9 @@ interface SignatureRule {
   extractSlug(url: string, html: string): string | null;
 }
 
-const GREENHOUSE_URL = /boards\.greenhouse\.io\/([^/?#"'\s]+)/i;
-const GREENHOUSE_EMBED = /boards\.greenhouse\.io\/embed\/job_board\/js\?[^"']*\bfor=([^&"']+)/i;
+const GREENHOUSE_URL = /(?:job-)?boards\.greenhouse\.io\/([^/?#"'\s]+)/i;
+const GREENHOUSE_EMBED =
+  /(?:job-)?boards\.greenhouse\.io\/embed\/job_board\/js\?[^"']*\bfor=([^&"']+)/i;
 const LEVER_URL = /jobs\.lever\.co\/([^/?#"'\s]+)/i;
 const ASHBY_URL = /jobs\.ashbyhq\.com\/([^/?#"'\s]+)/i;
 const WORKDAY_URL =
@@ -27,8 +28,8 @@ const RECRUITEE_URL = /https?:\/\/([a-z0-9-]+)\.recruitee\.com/i;
 const signatureRules: readonly SignatureRule[] = [
   {
     method: 'greenhouse',
-    urlPatterns: [/boards\.greenhouse\.io/i],
-    htmlPatterns: [/boards\.greenhouse\.io/i, /grnhse/i],
+    urlPatterns: [/(?:job-)?boards\.greenhouse\.io/i],
+    htmlPatterns: [/(?:job-)?boards\.greenhouse\.io/i, /grnhse/i],
     extractSlug: (url, html) =>
       extractCapture(GREENHOUSE_URL, url) ??
       extractCapture(GREENHOUSE_EMBED, html) ??
