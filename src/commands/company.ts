@@ -3,6 +3,7 @@ import { Option, type Command } from 'commander';
 
 import type { Tier } from '../db/index.js';
 import { CompanyService } from '../services/company.js';
+import { ScrapeService } from '../services/scrape.js';
 import { relativeTime } from '../util/time.js';
 import type { CommandContext } from './types.js';
 
@@ -37,7 +38,7 @@ async function addCompany(
 ): Promise<void> {
   const spinner = context.ui.spinner(`Adding ${name} and checking its careers site`).start();
   try {
-    const service = new CompanyService(context.repos, context.detector);
+    const service = createCompanyService(context);
     const result = await service.add({ name, url: options.url, tier: options.tier });
     if (result.outcome === 'duplicate') {
       spinner.succeed(`${result.company.name} is already registered; no changes made`);
@@ -49,6 +50,9 @@ async function addCompany(
       spinner.succeed(
         `${result.company.name} — detected: ${detection.method} (slug: ${detection.slug})`,
       );
+      if (!result.smoke?.ok) {
+        context.ui.warn(`Adapter smoke test failed: ${result.smoke?.reason ?? 'unknown reason'}`);
+      }
       return;
     }
     const detail = detection?.detail ?? 'no detail';
@@ -60,7 +64,7 @@ async function addCompany(
 }
 
 function listCompanies(context: CommandContext): void {
-  const service = new CompanyService(context.repos, context.detector);
+  const service = createCompanyService(context);
   const companies = service.list();
   if (companies.length === 0) {
     context.ui.info('No companies yet. Run `employed company add` or `employed import`.');
@@ -78,4 +82,9 @@ function listCompanies(context: CommandContext): void {
       company.last_success ? relativeTime(company.last_success) : '—',
     ]),
   );
+}
+
+function createCompanyService(context: CommandContext): CompanyService {
+  const scrapeService = new ScrapeService(context.repos, context.http);
+  return new CompanyService(context.repos, context.detector, scrapeService);
 }
