@@ -159,6 +159,10 @@ test('Workday adapter concatenates pages through an empty terminator', async () 
     { limit: 20, offset: 40, searchText: '' },
   ]);
   assert.equal(postings[0]?.externalId, 'JR-1001');
+  assert.equal(
+    postings[0]?.url,
+    'https://example.wd1.myworkdayjobs.com/Careers/job/New-York/Software-Engineer-I_JR-1001',
+  );
   assert.equal(postings[0]?.description, null);
 });
 
