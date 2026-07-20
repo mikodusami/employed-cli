@@ -49,6 +49,9 @@ async function runOrchestration(
       ai: options.ai ? context.ai : null,
       config: context.config.loadApp(),
       keywords: context.config.loadKeywords(),
+      onProgress: (current, total, company) => {
+        spinner.update(`[${current}/${total}] ${company}`);
+      },
     });
     const tiers = options.tier ? parseTiers(options.tier) : undefined;
     const summary = await service.execute({ tiers, email: options.email });
