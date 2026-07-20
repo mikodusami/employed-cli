@@ -1,0 +1,14 @@
+{
+  "jobs": [
+    {
+      "id": 5274711008,
+      "title": "Account Executive, Nonprofits & Higher Education - APAC",
+      "absolute_url": "https://job-boards.greenhouse.io/anthropic/jobs/5274711008",
+      "location": { "name": "Sydney, Australia" },
+      "departments": [{ "name": "Sales", "id": 101 }],
+      "content": "&lt;p&gt;&lt;strong&gt;About Anthropic&lt;/strong&gt;&lt;/p&gt;\n&lt;p&gt;Build beneficial AI systems.&lt;/p&gt;",
+      "company_name": "Anthropic",
+      "unknown_future_field": { "safe": true }
+    }
+  ]
+}
