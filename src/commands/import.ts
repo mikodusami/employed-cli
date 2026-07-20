@@ -1,7 +1,6 @@
 /** Registers non-aborting company batch import orchestration. */
 import type { Command } from 'commander';
 
-import { StubDetector } from '../scrape/detect.js';
 import { CompanyService, type ImportProgress } from '../services/company.js';
 import type { CommandContext } from './types.js';
 
@@ -16,7 +15,7 @@ export function register(program: Command, context: CommandContext): void {
 async function importCompanies(context: CommandContext, file?: string): Promise<void> {
   const companiesFile = context.config.loadCompanies(file);
   const spinner = context.ui.spinner('Importing companies').start();
-  const service = new CompanyService(context.repos, new StubDetector());
+  const service = new CompanyService(context.repos, context.detector);
 
   try {
     const summary = await service.importFromConfig(companiesFile, (progress) => {
