@@ -19,6 +19,7 @@ import { register as registerRescore } from './commands/rescore.js';
 import { register as registerRun } from './commands/run.js';
 import { register as registerScan } from './commands/scan.js';
 import { register as registerSchedule } from './commands/schedule.js';
+import { register as registerStats } from './commands/stats.js';
 import { register as registerSync } from './commands/sync.js';
 import type { CommandContext } from './commands/types.js';
 import { VERSION } from './constants.js';
@@ -111,6 +112,7 @@ async function run(): Promise<void> {
   registerNote(program, context);
   registerMove(program, context);
   registerDismiss(program, context);
+  registerStats(program, context);
   registerDoctor(program, context);
 
   try {
