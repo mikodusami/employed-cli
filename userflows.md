@@ -491,3 +491,86 @@ flow below explicitly creates and destroys its own workspace.
    as live-site drift rather than weakening the offline validation gate.
 7. Run `rm -rf "$EMPLOYED_DIR"`.
 8. Run `unset EMPLOYED_DIR`.
+
+## Layer 3, Unit 7 — Playwright strategy and self-healing
+
+Run `npm run build` first. Browser-backed flows also require `npx playwright install chromium` once
+per development machine. Every flow below creates and destroys an independent Employed workspace.
+
+### Flow 1: Verify browser and healing configuration
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npx playwright install chromium` if Chromium has not already been installed for this
+   Playwright version.
+4. Confirm `$EMPLOYED_DIR/config.yaml` contains `run.playwright.navTimeoutMs: 30000`,
+   `run.heal.maxPerCompany: 2`, and `run.heal.maxPerRun: 5` with explanatory comments.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Verify browser sharing and resource blocking offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test` without any live-test environment variable.
+4. Confirm the browser-pool tests launch one browser for two borrowed pages, block image, font, and
+   media requests, preserve script requests, apply the configured timeout, and close every page.
+5. Confirm the throwing-operation case still closes both its page and browser.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Verify rendered extraction and pagination offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test`.
+4. Confirm a recorded client-rendered page extracts jobs where its static HTML yields zero.
+5. Confirm load-more clicks reveal the second batch and stop when the button disappears.
+6. Confirm infinite scroll reaches the expanded content, stops when document height stabilizes, and
+   never exceeds `maxPages`.
+7. Confirm both strategies use the same field extraction and relative-URL resolution assertions.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Generate a Playwright scraper from a sparse live page
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed doctor --no-animation` and confirm Claude or Codex is installed and active.
+4. Set `run.autoGenerateOnAdd` to `false`.
+5. Add a client-rendered custom careers page with
+   `employed company add "Rendered Board" --url <CLIENT_RENDERED_CAREERS_URL> --no-animation`.
+6. Run `employed company generate "Rendered Board" --no-animation`.
+7. Confirm the sparse static page is recaptured in Chromium and a passing result reports
+   `generated-playwright`, a nonzero job count, and confidence.
+8. Run `employed scan --company "Rendered Board" --no-animation`; confirm jobs are extracted through
+   the persisted Playwright config.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Exercise selector-break self-healing offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test`.
+4. Confirm the simulated previously-working selector returns zero on changed HTML during its first
+   scan, becomes degraded, records one failure, and does not call AI.
+5. Confirm the second scan regenerates a matching config, resets the failure counter, retries once
+   in the same run, stores both jobs, and returns health `ok`.
+6. Confirm failed regeneration becomes broken with a report note rather than aborting the suite.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Verify healing budgets and AI-free asymmetry
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test`.
+4. Confirm a third heal attempt for one company is refused with a company-budget note.
+5. Confirm the sixth accepted heal across distinct companies is refused with a global-budget note.
+6. Confirm an ATS company can re-detect, adopt its new provider, smoke-test, and reset failures with
+   no AI runner.
+7. Confirm a generated company with no AI remains degraded and reports that regeneration was
+   skipped.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
