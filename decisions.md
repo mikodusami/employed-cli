@@ -75,3 +75,18 @@ providers and prefer Claude before Codex. Future runner behavior will skip disab
 fall through enabled providers in order; an AI master switch or no enabled providers means degraded
 AI-free operation. Cache keys are documented to include the provider, but no key construction or
 runner implementation is introduced in this remediation.
+
+## 2026-07-19T20:43:54-04:00 — Company registry service boundary
+
+Company commands orchestrate injected capabilities while `CompanyService` owns URL normalization,
+case-insensitive duplicate behavior, default-tier application, detection persistence, and batch
+failure containment. ATS detection is an interface with a deterministic no-network stub until Layer
+3. Repository lookup uses SQLite `COLLATE NOCASE`, keeping set membership in the database.
+
+Company-file schemas validate structure but leave URL protocol validation to `CompanyService`. This
+allows an import containing one non-web URL to report that company as failed while importing all
+valid siblings, instead of rejecting the whole YAML file before batch rules can run.
+
+Command context exposes capabilities as `ui`, `config`, `db`, and `repos`; services are constructed
+inside commands rather than accumulated in context. Expected `AppError` subclasses render cleanly,
+while unexpected errors retain stack traces as development signals.
