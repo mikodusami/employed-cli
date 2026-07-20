@@ -1,0 +1,17 @@
+{
+  "total": 3,
+  "jobPostings": [
+    {
+      "title": "Software Engineer I",
+      "externalPath": "/job/New-York/Software-Engineer-I_JR-1001",
+      "locationsText": "New York, NY",
+      "bulletFields": ["Job ID: JR-1001"],
+      "unknownFutureField": true
+    },
+    {
+      "title": "Associate Product Manager",
+      "externalPath": "/job/Remote/Associate-Product-Manager_JR-1002",
+      "locationsText": "Remote"
+    }
+  ]
+}
