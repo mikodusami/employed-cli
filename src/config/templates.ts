@@ -26,8 +26,16 @@ run:
     navTimeoutMs: 30000
 
 email:
-  # Email integration is configured in a later layer.
+  # Send the daily report after an employed run.
   enabled: false
+  to: ""       # digest recipient
+  from: ""     # sender address, usually the SMTP user
+  smtp:
+    host: smtp.gmail.com
+    port: 465
+    user: ""   # Gmail address or SMTP username
+    # Preferred: export EMPLOYED_SMTP_PASSWORD="your-app-password"
+    # password: "" # plaintext fallback; employed enforces config.yaml mode 600
 
 # AI provider settings. employed shells out to an installed AI CLI
 # (Claude Code or OpenAI Codex) for scraper generation, email
