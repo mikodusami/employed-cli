@@ -3,13 +3,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createDb, Repositories } from '../src/db/index.js';
-import { StubDetector } from '../src/scrape/detect.js';
+import { SignatureDetector } from '../src/scrape/detect.js';
 import { CompanyService } from '../src/services/company.js';
 import { ValidationError } from '../src/util/errors.js';
+import type { FetchResult, HttpClient } from '../src/util/http.js';
+
+class FixtureHttpClient implements HttpClient {
+  public async fetchText(url: string): Promise<FetchResult> {
+    return {
+      finalUrl: url,
+      status: 200,
+      body: '<html><body>Custom careers page</body></html>',
+      contentType: 'text/html',
+    };
+  }
+}
+
+function createDetector(): SignatureDetector {
+  return new SignatureDetector(new FixtureHttpClient());
+}
 
 test('add inserts an untested company and detects through the injected seam', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), new StubDetector());
+  const service = new CompanyService(new Repositories(database), createDetector());
   const result = await service.add({
     name: 'Stripe',
     url: 'https://stripe.com/jobs#openings',
@@ -20,13 +36,13 @@ test('add inserts an untested company and detects through the injected seam', as
   assert.equal(result.company.careers_url, 'https://stripe.com/jobs');
   assert.equal(result.company.scrape_method, 'unknown');
   assert.equal(result.company.health, 'untested');
-  assert.equal(result.detection?.detail, 'detection not yet implemented');
+  assert.equal(result.detection?.detail, 'no supported ATS signature found');
   database.close();
 });
 
 test('case-insensitive duplicate names do not insert a second company', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), new StubDetector());
+  const service = new CompanyService(new Repositories(database), createDetector());
   await service.add({ name: 'Stripe', url: 'https://stripe.com/jobs' });
   const duplicate = await service.add({ name: 'stripe', url: 'https://example.com/jobs' });
 
@@ -38,7 +54,7 @@ test('case-insensitive duplicate names do not insert a second company', async ()
 
 test('invalid or non-web careers URLs produce typed validation errors', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), new StubDetector());
+  const service = new CompanyService(new Repositories(database), createDetector());
 
   await assert.rejects(
     () => service.add({ name: 'FTP Company', url: 'ftp://example.com/jobs' }),
@@ -54,7 +70,7 @@ test('invalid or non-web careers URLs produce typed validation errors', async ()
 
 test('batch import continues after one bad entry and reruns idempotently', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), new StubDetector());
+  const service = new CompanyService(new Repositories(database), createDetector());
   const companiesFile = {
     defaults: { tier: 'B' as const },
     companies: [
