@@ -8,7 +8,11 @@ import type { AtsDetector, DetectionResult } from '../src/scrape/detect.js';
 import type { ScraperConfig } from '../src/scrape/config.js';
 import { GenerateService, type GenerateResult } from '../src/services/generate.js';
 import { HealBudget, HealService } from '../src/services/heal.js';
-import { ScrapeService, type ScrapeServiceOptions, type SmokeResult } from '../src/services/scrape.js';
+import {
+  ScrapeService,
+  type ScrapeServiceOptions,
+  type SmokeResult,
+} from '../src/services/scrape.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
 
 test('simulated selector break defers once then regenerates and retries the scrape', async () => {
@@ -76,7 +80,12 @@ test('generated heal without AI stays degraded and failed generation becomes bro
   repositories.companies.recordFailure(company.id);
   const current = repositories.companies.findByName('Fixture') ?? company;
   const budget = new HealBudget({ maxPerCompany: 2, maxPerRun: 5 });
-  const noAi = new HealService(repositories, new FakeDetector(unknown()), new FakeSmoke(false), null);
+  const noAi = new HealService(
+    repositories,
+    new FakeDetector(unknown()),
+    new FakeSmoke(false),
+    null,
+  );
 
   const skipped = await noAi.heal(current, budget);
   assert.equal(skipped.healed, false);
