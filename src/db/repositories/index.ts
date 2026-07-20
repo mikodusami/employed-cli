@@ -9,9 +9,14 @@ export class Repositories {
   public readonly companies: CompanyRepository;
   public readonly jobs: JobRepository;
 
-  public constructor(database: Database.Database) {
+  public constructor(private readonly database: Database.Database) {
     this.companies = new CompanyRepository(database);
     this.jobs = new JobRepository(database);
+  }
+
+  /** Runs a service operation atomically across repository calls. */
+  public withTransaction<Result>(operation: () => Result): Result {
+    return this.database.transaction(operation)();
   }
 }
 
