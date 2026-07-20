@@ -3,11 +3,14 @@
 import { Command } from 'commander';
 
 import { ConfigService } from './config/index.js';
+import { register as registerCompany } from './commands/company.js';
+import { register as registerImport } from './commands/import.js';
 import { register as registerInit } from './commands/init.js';
 import type { CommandContext } from './commands/types.js';
 import { VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
 import { createUI } from './ui/index.js';
+import { AppError } from './util/errors.js';
 
 interface ProgramOptions {
   animation: boolean;
@@ -23,10 +26,10 @@ async function run(): Promise<void> {
   const context: CommandContext = {
     ui,
     config: new ConfigService(),
-    get database() {
+    get db() {
       return getDatabase();
     },
-    get repositories() {
+    get repos() {
       return (repositories ??= new Repositories(getDatabase()));
     },
   };
@@ -37,6 +40,8 @@ async function run(): Promise<void> {
     .option('--no-animation', 'disable animated terminal output');
 
   registerInit(program, context);
+  registerCompany(program, context);
+  registerImport(program, context);
 
   try {
     await program.parseAsync(process.argv);
@@ -53,7 +58,16 @@ async function run(): Promise<void> {
 try {
   await run();
 } catch (error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  createUI(false).error(message);
+  createUI(false).error(formatFatalError(error));
   process.exitCode = 1;
+}
+
+function formatFatalError(error: unknown): string {
+  if (error instanceof AppError) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+  return String(error);
 }
