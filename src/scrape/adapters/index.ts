@@ -2,6 +2,7 @@
 import type { ScrapeMethod } from '../../db/index.js';
 import type { HttpClient } from '../../util/http.js';
 import type { ScrapeSource } from '../types.js';
+import { GeneratedSource } from '../generated.js';
 import { AshbyAdapter } from './ashby.js';
 import { GreenhouseAdapter } from './greenhouse.js';
 import { LeverAdapter } from './lever.js';
@@ -18,6 +19,7 @@ type AdapterFactory = (dependencies: AdapterDependencies) => ScrapeSource;
 const adapterFactories: Partial<Record<ScrapeMethod, AdapterFactory>> = {
   ashby: ({ http }) => new AshbyAdapter(http),
   greenhouse: ({ http }) => new GreenhouseAdapter(http),
+  'generated-static': ({ http }) => new GeneratedSource(http),
   lever: ({ http }) => new LeverAdapter(http),
   recruitee: ({ http }) => new RecruiteeAdapter(http),
   smartrecruiters: ({ http }) => new SmartRecruitersAdapter(http),
