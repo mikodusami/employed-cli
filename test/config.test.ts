@@ -14,7 +14,13 @@ import {
 
 test('schemas populate every top-level configuration section from an empty mapping', () => {
   assert.deepEqual(AppConfigSchema.parse({}), {
-    run: { time: '07:00', concurrency: 4 },
+    run: {
+      time: '07:00',
+      concurrency: 4,
+      jitterMs: { min: 500, max: 1500 },
+      maxRetries: 3,
+      respectRobots: true,
+    },
     email: { enabled: false },
     ai: {
       enabled: true,
