@@ -21,6 +21,7 @@ export class EventRepository {
     [{ application_id: number }],
     EventRow
   >;
+  private readonly listStatement: Database.Statement<[], EventRow>;
 
   public constructor(database: Database.Database) {
     this.appendStatement = database.prepare(`
@@ -31,6 +32,12 @@ export class EventRepository {
     this.listForApplicationStatement = database.prepare(`
       SELECT * FROM events WHERE application_id = @application_id ORDER BY at, id
     `);
+    this.listStatement = database.prepare('SELECT * FROM events ORDER BY id');
+  }
+
+  /** Lists the complete immutable audit log for lossless exports. */
+  public list(): readonly EventRow[] {
+    return this.listStatement.all();
   }
 
   /** Lists one application's full audit trail, oldest to newest. */
