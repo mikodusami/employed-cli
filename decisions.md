@@ -51,3 +51,11 @@ initial migration. A database created from the earlier inferred schema must be b
 reinitialized. Fresh and idempotently reopened databases remain at `user_version = 1` as required.
 
 The attachment does not include §7.6, so the provisional keyword seed profile remains unchanged.
+
+## 2026-07-19T20:10:18-04:00 — Authoritative scoring seed profile
+
+The supplied §7.6 values replace the provisional `keywords.yaml` template exactly. Negative keyword
+weights remain positive magnitudes because the scoring formula applies the negative multiplier;
+storing negative numbers would invert the penalty. Layer 2 owns only the validated configuration
+seed. Case-insensitive matching, scoring math, matched-keyword persistence, and score commands remain
+work for the later scoring-engine layer.
