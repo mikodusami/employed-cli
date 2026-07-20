@@ -1,5 +1,6 @@
 /** Verifies company-registry rules with in-memory persistence and no network. */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { createDb, Repositories } from '../src/db/index.js';
@@ -15,6 +16,25 @@ class FixtureHttpClient implements HttpClient {
       finalUrl: url,
       status: 200,
       body: '<html><body>Custom careers page</body></html>',
+      contentType: 'text/html',
+    };
+  }
+}
+
+class SmokeHttpClient implements HttpClient {
+  public async fetchText(url: string): Promise<FetchResult> {
+    if (url.includes('boards-api.greenhouse.io')) {
+      return {
+        finalUrl: url,
+        status: 200,
+        body: readAdapterFixture('greenhouse.json'),
+        contentType: 'application/json',
+      };
+    }
+    return {
+      finalUrl: 'https://job-boards.greenhouse.io/anthropic',
+      status: 200,
+      body: '<html></html>',
       contentType: 'text/html',
     };
   }
@@ -106,3 +126,28 @@ test('batch import continues after one bad entry and reruns idempotently', async
   );
   database.close();
 });
+
+test('add smoke-tests a detected adapter and returns updated health', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const http = new SmokeHttpClient();
+  const service = new CompanyService(
+    repositories,
+    new SignatureDetector(http),
+    new ScrapeService(repositories, http),
+  );
+  const result = await service.add({
+    name: 'Anthropic',
+    url: 'https://www.anthropic.com/careers',
+  });
+
+  assert.equal(result.detection?.method, 'greenhouse');
+  assert.equal(result.smoke?.ok, true);
+  assert.equal(result.company.health, 'ok');
+  assert.equal(result.company.last_yield, 1);
+  database.close();
+});
+
+function readAdapterFixture(fileName: string): string {
+  return readFileSync(new URL(`fixtures/adapters/${fileName}`, import.meta.url), 'utf8');
+}
