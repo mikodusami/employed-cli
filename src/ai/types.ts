@@ -33,4 +33,6 @@ export interface AiTask<Result> {
 /** The only AI surface available to feature modules. */
 export interface AiRunner {
   runJson<Result>(task: AiTask<Result>): Promise<Result>;
+  /** Reports calls spent so far this run; optional so existing test doubles stay valid. */
+  callCount?(): number;
 }

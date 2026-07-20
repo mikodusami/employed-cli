@@ -110,6 +110,11 @@ export class DefaultAiRunner implements AiRunner {
     );
   }
 
+  /** Reports the AI call count consumed against `maxCallsPerRun` so far this run. */
+  public callCount(): number {
+    return this.calls;
+  }
+
   private invoke(provider: AiProvider, request: AiRequest): Promise<string> {
     if (this.calls >= this.config.maxCallsPerRun) {
       throw new AiBudgetExceededError(
