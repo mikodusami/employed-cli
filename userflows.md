@@ -403,3 +403,91 @@ send a prompt or consume an AI call.
 5. Confirm provider timeout and missing-binary cases become typed provider errors and the suite exits
    cleanly with no child process left running.
 6. Run the isolated cleanup commands.
+
+## Layer 3, Unit 6 — Tier-2/3 static scraper generation
+
+Run `npm run build` before these flows. Generation invokes the active Claude or Codex CLI, so use a
+page you are authorized to fetch and expect an AI call unless the result is already cached. Every
+flow below explicitly creates and destroys its own workspace.
+
+### Flow 1: Inspect the generation defaults and command
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Confirm `$EMPLOYED_DIR/config.yaml` contains `run.autoGenerateOnAdd: true` with an explanatory
+   comment.
+4. Run `employed company --help` and confirm `generate <name>` appears.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Generate explicitly and prove the validation gate persisted it
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Set `run.autoGenerateOnAdd` to `false` in `$EMPLOYED_DIR/config.yaml`.
+4. Run `employed company add "Custom Board" --url <STATIC_CAREERS_URL> --no-animation`, replacing
+   the placeholder with a static custom careers page that contains repeated job links.
+5. Confirm the company is registered as `unknown`, then run
+   `employed company generate "Custom Board" --no-animation`.
+6. Confirm success reports `generated-static`, a nonzero job count, and confidence from 0.00–1.00.
+7. Run `employed company list --no-animation`; confirm method `generated-static`, health `ok`, and
+   the same nonzero last yield. A failed gate must instead show its reasons and persist no static
+   config.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Automatically generate after unknown-source detection
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Leave `run.autoGenerateOnAdd: true` and run
+   `employed company add "Auto Board" --url <STATIC_CAREERS_URL> --no-animation`.
+4. Confirm one command detects an unknown source, generates a config, executes it, and reports a
+   validated `generated-static` result with a nonzero job count.
+5. Run `employed company list --no-animation` and confirm Auto Board is healthy.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Degrade safely when AI is disabled
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Set `ai.enabled` to `false` in `$EMPLOYED_DIR/config.yaml`.
+4. Run `employed company add "No AI Board" --url <STATIC_CAREERS_URL> --no-animation`, then run
+   `employed company generate "No AI Board" --no-animation`.
+5. Confirm the command exits successfully, says AI is unavailable, and suggests rerunning generate
+   later.
+6. Run `employed company list --no-animation`; confirm the company remains unchanged as `unknown`
+   rather than broken.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Exercise distillation, execution, validation, and retry offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test` without any live-test environment variable.
+4. Confirm distiller tests remove scripts, styles, SVG, comments, and unsafe attributes; preserve the
+   selector whitelist; remain byte-identical; and cap output at 35 KiB around repeated links.
+5. Confirm executor tests cover static fields, absolute URL resolution, two-page `next-link` and
+   `url-param` pagination, and render-only escalation.
+6. Confirm every validation threshold has passing and failing coverage, including the navigation
+   contamination reason.
+7. Confirm the fake-AI service tests persist a good config, retry a valid-but-bad config exactly
+   once, mark a second failure broken, reuse unchanged-DOM cache, and skip cleanly with null AI.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Perform the optional two-page live acceptance
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed doctor --no-animation` and confirm an enabled provider is installed and active.
+4. Set `run.autoGenerateOnAdd` to `false`.
+5. Add two real static custom careers pages under distinct company names and explicitly run
+   `employed company generate <name> --no-animation` for each.
+6. Confirm both configurations pass execution, report nonzero jobs, and appear as healthy
+   `generated-static` companies. Treat page redesigns, robots restrictions, or render-only behavior
+   as live-site drift rather than weakening the offline validation gate.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
