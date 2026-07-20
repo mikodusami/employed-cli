@@ -50,7 +50,9 @@ export class CompanyRepository {
       )
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM companies WHERE id = @id');
-    this.findByNameStatement = database.prepare('SELECT * FROM companies WHERE name = @name');
+    this.findByNameStatement = database.prepare(`
+      SELECT * FROM companies WHERE name = @name COLLATE NOCASE
+    `);
     this.listStatement = database.prepare('SELECT * FROM companies ORDER BY tier, name');
     this.updateMethodStatement = database.prepare(`
       UPDATE companies
