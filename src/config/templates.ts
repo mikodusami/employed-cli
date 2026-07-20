@@ -7,6 +7,14 @@ run:
   time: "07:00"
   # Maximum companies checked simultaneously (1-10).
   concurrency: 4
+  # Random delay range between requests to the same domain.
+  jitterMs:
+    min: 500
+    max: 1500
+  # Total attempts for retryable HTTP failures.
+  maxRetries: 3
+  # Honor robots.txt while detecting non-API careers pages.
+  respectRobots: true
 
 email:
   # Email integration is configured in a later layer.
