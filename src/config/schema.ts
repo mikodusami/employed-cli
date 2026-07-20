@@ -54,8 +54,23 @@ export const AppConfigSchema = z.object({
     .object({
       time: z.string().regex(/^\d{2}:\d{2}$/, 'must use HH:MM format').default('07:00'),
       concurrency: z.number().int().min(1).max(10).default(4),
+      jitterMs: z
+        .object({
+          min: z.number().int().nonnegative().default(500),
+          max: z.number().int().nonnegative().default(1500),
+        })
+        .refine(({ min, max }) => min <= max, 'minimum jitter must not exceed maximum jitter')
+        .default({ min: 500, max: 1500 }),
+      maxRetries: z.number().int().min(1).max(10).default(3),
+      respectRobots: z.boolean().default(true),
     })
-    .default({ time: '07:00', concurrency: 4 }),
+    .default({
+      time: '07:00',
+      concurrency: 4,
+      jitterMs: { min: 500, max: 1500 },
+      maxRetries: 3,
+      respectRobots: true,
+    }),
   email: z
     .object({
       enabled: z.boolean().default(false),
