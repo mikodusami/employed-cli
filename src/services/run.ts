@@ -9,6 +9,7 @@ import type { AutoAppliedUpdate, RunStats } from '../report/model.js';
 import { writeReport } from '../report/writer.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { HttpClient } from '../util/http.js';
+import { ApplicationService } from './application.js';
 import { ScrapeRuntime } from './scrape-runtime.js';
 import type { ProposalPrompter } from './sync.js';
 import { SyncService } from './sync.js';
@@ -226,6 +227,7 @@ export class RunService {
         this.dependencies.syncService ??
         new SyncService(
           repositories,
+          new ApplicationService(repositories, this.now),
           new EmailFetcher(ai),
           new AiTailClassifier(ai),
           ai,

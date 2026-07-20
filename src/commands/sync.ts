@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 
 import { AiTailClassifier } from '../gmail/ai-classify.js';
 import { EmailFetcher } from '../gmail/fetch.js';
+import { ApplicationService } from '../services/application.js';
 import { SyncService, type ProposalPrompter, type SyncProposal } from '../services/sync.js';
 import type { CommandContext } from './types.js';
 
@@ -31,6 +32,7 @@ async function runSync(context: CommandContext, options: SyncCommandOptions): Pr
   const days = Number.parseInt(options.days, 10);
   const service = new SyncService(
     context.repos,
+    new ApplicationService(context.repos),
     new EmailFetcher(context.ai),
     new AiTailClassifier(context.ai),
     context.ai,

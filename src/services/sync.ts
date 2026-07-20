@@ -14,6 +14,7 @@ import type { AiClassificationResult } from '../gmail/ai-classify.js';
 import type { EmailMeta, EmailClass } from '../gmail/types.js';
 import type { AiRunner } from '../ai/types.js';
 import type { AppStatus, Repositories } from '../db/index.js';
+import type { ApplicationService } from './application.js';
 
 export type SyncMode = 'interactive' | 'cron';
 
@@ -95,6 +96,7 @@ function skippedResult(mode: SyncMode): SyncResult {
 export class SyncService {
   public constructor(
     private readonly repositories: Repositories,
+    private readonly applications: ApplicationService,
     private readonly fetcher: EmailFetcherLike,
     private readonly tailClassifier: AiTailClassifierLike,
     private readonly ai: AiRunner | null,
@@ -205,7 +207,10 @@ export class SyncService {
   }
 
   /** Auto-applies only high-confidence, exact-match status updates; everything else defers. */
-  private applyCron(tally: SyncTally, proposals: readonly SyncProposal[]): SyncResult {
+  private async applyCron(
+    tally: SyncTally,
+    proposals: readonly SyncProposal[],
+  ): Promise<SyncResult> {
     let applied = 0;
     let deferred = 0;
     const autoApplied: AutoAppliedUpdate[] = [];
@@ -224,7 +229,7 @@ export class SyncService {
         });
         continue;
       }
-      this.applyProposal(proposal, tally.nowIso);
+      await this.applyProposal(proposal);
       applied += 1;
       autoApplied.push({
         company: proposal.company,
@@ -254,7 +259,7 @@ export class SyncService {
     for (const proposal of proposals) {
       const accepted = acceptedIds.has(proposal.threadId);
       if (accepted) {
-        this.applyProposal(proposal, tally.nowIso);
+        await this.applyProposal(proposal);
         applied += 1;
       } else {
         deferred += 1;
@@ -270,31 +275,28 @@ export class SyncService {
     return { ...tally, skipped: false, applied, deferred, autoApplied: [] };
   }
 
-  private applyProposal(proposal: SyncProposal, occurredAt: string): void {
+  /**
+   * Routes every CRM write through `ApplicationService` (never a direct repository write) so a
+   * sync-driven status change produces the identical event shape as a manual `move` — see
+   * decisions.md for why this superseded Unit 2's original `type: 'email'` tagging.
+   */
+  private async applyProposal(proposal: SyncProposal): Promise<void> {
     const status = TYPE_TO_STATUS[proposal.type];
     if (!status) {
       return;
     }
-    this.repositories.withTransaction(() => {
-      const applicationId =
-        proposal.action === 'create'
-          ? this.repositories.applications.create(
-              { company_name: proposal.company, role: proposal.role, status },
-              occurredAt,
-            ).id
-          : proposal.applicationId;
-      if (applicationId === null) {
-        return;
-      }
-      if (proposal.action === 'update') {
-        this.repositories.applications.updateStatus(applicationId, status, occurredAt);
-      }
-      this.repositories.events.append({
-        application_id: applicationId,
-        at: occurredAt,
-        type: 'email',
-        note: `Classified as ${proposal.type} via email sync (thread ${proposal.threadId}).`,
+    const note = `Classified as ${proposal.type} via email sync (thread ${proposal.threadId}).`;
+    if (proposal.action === 'create') {
+      await this.applications.createManual({
+        company: proposal.company,
+        role: proposal.role,
+        status,
+        note,
       });
-    });
+      return;
+    }
+    if (proposal.applicationId !== null) {
+      await this.applications.transition(proposal.applicationId, status, { note });
+    }
   }
 }
