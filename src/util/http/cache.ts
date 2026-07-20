@@ -21,6 +21,7 @@ export class CachingHttpClient implements HttpClient {
     private readonly inner: HttpClient,
     database: Database.Database,
     private readonly now: () => Date = () => new Date(),
+    private readonly onCacheHit?: (url: string) => void,
   ) {
     this.findStatement = database.prepare('SELECT * FROM http_cache WHERE url = ?');
     this.upsertStatement = database.prepare(`
@@ -39,6 +40,7 @@ export class CachingHttpClient implements HttpClient {
     const cached = this.findStatement.get(url);
     const response = await this.inner.fetchText(url, addValidators(options, cached));
     if (response.status === 304 && cached) {
+      this.onCacheHit?.(url);
       return {
         finalUrl: response.finalUrl,
         status: 200,
