@@ -4,11 +4,17 @@ import { Command } from 'commander';
 
 import { buildAiRunner, type AiRunner } from './ai/index.js';
 import { ConfigService } from './config/index.js';
+import { register as registerApp } from './commands/app.js';
+import { register as registerApply } from './commands/apply.js';
+import { register as registerBoard } from './commands/board.js';
 import { register as registerCompany } from './commands/company.js';
+import { register as registerDismiss } from './commands/dismiss.js';
 import { register as registerDoctor } from './commands/doctor.js';
 import { register as registerImport } from './commands/import.js';
 import { register as registerInit } from './commands/init.js';
+import { register as registerMove } from './commands/move.js';
 import { register as registerNew } from './commands/new.js';
+import { register as registerNote } from './commands/note.js';
 import { register as registerRescore } from './commands/rescore.js';
 import { register as registerRun } from './commands/run.js';
 import { register as registerScan } from './commands/scan.js';
@@ -99,6 +105,12 @@ async function run(): Promise<void> {
   registerRun(program, context);
   registerSchedule(program, context);
   registerSync(program, context);
+  registerApply(program, context);
+  registerBoard(program, context);
+  registerApp(program, context);
+  registerNote(program, context);
+  registerMove(program, context);
+  registerDismiss(program, context);
   registerDoctor(program, context);
 
   try {
