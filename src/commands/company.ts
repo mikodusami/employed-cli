@@ -79,7 +79,9 @@ async function generateCompany(context: CommandContext, name: string): Promise<v
   if (!company) {
     throw new ValidationError(`Company ${name} is not registered.`);
   }
-  const spinner = context.ui.spinner(`Generating and validating a scraper for ${company.name}`).start();
+  const spinner = context.ui
+    .spinner(`Generating and validating a scraper for ${company.name}`)
+    .start();
   try {
     const result = await new GenerateService(context.repos, context.http, context.ai).generateFor(
       company,
