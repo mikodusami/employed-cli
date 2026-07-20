@@ -47,6 +47,7 @@ export class JobRepository {
   private readonly findNewSinceStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly dismissStatement: Database.Statement<[{ id: number }], Database.RunResult>;
   private readonly findByIdStatement: Database.Statement<[{ id: number }], JobRow>;
+  private readonly listStatement: Database.Statement<[], JobRow>;
   private readonly listOpenStatement: Database.Statement<[], JobRow>;
   private readonly listOpenFirstSeenOnStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly updateScoreStatement: Database.Statement<[JobScoreUpdate], Database.RunResult>;
@@ -81,6 +82,7 @@ export class JobRepository {
       UPDATE jobs SET status = 'dismissed' WHERE id = @id
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM jobs WHERE id = @id');
+    this.listStatement = database.prepare('SELECT * FROM jobs ORDER BY id');
     this.listOpenStatement = database.prepare(`
       SELECT * FROM jobs WHERE status = 'open' ORDER BY id
     `);
@@ -129,6 +131,11 @@ export class JobRepository {
   /** Lists every currently open job for deterministic offline re-scoring. */
   public listOpen(): readonly JobRow[] {
     return this.listOpenStatement.all();
+  }
+
+  /** Lists every job state for complete, lossless exports. */
+  public list(): readonly JobRow[] {
+    return this.listStatement.all();
   }
 
   /** Finds a job by id, or undefined when it does not exist. */
