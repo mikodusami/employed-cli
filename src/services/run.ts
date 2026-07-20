@@ -71,6 +71,7 @@ export interface RunServiceDependencies {
   syncService?: SyncService;
   /** Overrides SMTP delivery; tests use an in-memory transport. */
   emailService?: DigestSender;
+  onProgress?: (current: number, total: number, company: string) => void;
 }
 
 /** Mutable counters threaded through the per-company loop. */
@@ -127,7 +128,8 @@ export class RunService {
           ? filterByTiers(allCompanies, options.tiers)
           : selectCompaniesForRun(allCompanies, runIndex);
 
-      for (const company of selected) {
+      for (const [index, company] of selected.entries()) {
+        this.dependencies.onProgress?.(index + 1, selected.length, company.name);
         await this.scanOneCompany(runtime, repositories, company, accumulator);
       }
 
