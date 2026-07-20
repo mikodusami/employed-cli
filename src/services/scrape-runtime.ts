@@ -1,6 +1,6 @@
 /** Composes one run-scoped scraper fleet with shared browser and heal budgets. */
 import type { AiRunner } from '../ai/types.js';
-import type { AppConfig } from '../config/schema.js';
+import type { AppConfig, KeywordsFile } from '../config/schema.js';
 import type { Repositories } from '../db/index.js';
 import { BrowserPool } from '../scrape/browser.js';
 import type { AtsDetector } from '../scrape/detect.js';
@@ -16,6 +16,7 @@ export interface ScrapeRuntimeDependencies {
   detector: AtsDetector;
   ai: AiRunner | null;
   config: AppConfig;
+  keywords: KeywordsFile;
 }
 
 /** Owns capabilities whose lifetime must match one command or scheduled run. */
@@ -33,7 +34,10 @@ export class ScrapeRuntime {
       dependencies.ai,
       this.browsers,
     );
-    const options: ScrapeServiceOptions = { browsers: this.browsers };
+    const options: ScrapeServiceOptions = {
+      browsers: this.browsers,
+      keywords: dependencies.keywords,
+    };
     this.scraper = new ScrapeService(dependencies.repositories, dependencies.http, options);
     options.healing = {
       service: new HealService(
