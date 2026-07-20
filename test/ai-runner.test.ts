@@ -11,7 +11,7 @@ import {
   buildAiProviders,
   buildAiRunner,
 } from '../src/ai/index.js';
-import { DefaultAiRunner } from '../src/ai/runner.js';
+import { buildCacheKey, DefaultAiRunner } from '../src/ai/runner.js';
 import type {
   AiProvider,
   AiRequest,
@@ -123,6 +123,19 @@ test('budget counts provider calls while cache hits remain free', async () => {
   await runner.runJson(task('two'));
   await assert.rejects(() => runner.runJson(task('three')), AiBudgetExceededError);
   assert.equal(fake.calls, 2);
+  database.close();
+});
+
+test('noCache tasks skip both the cache read and the cache write', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const fake = provider('codex', true, ['{"ok":true}', '{"ok":true}']);
+  const runner = new DefaultAiRunner([fake], repositories, config().ai);
+
+  assert.deepEqual(await runner.runJson({ ...task('same'), noCache: true }), { ok: true });
+  assert.deepEqual(await runner.runJson({ ...task('same'), noCache: true }), { ok: true });
+  assert.equal(fake.calls, 2);
+  assert.equal(repositories.aiCache.find(buildCacheKey('codex', 'test_v1', 'same')), undefined);
   database.close();
 });
 

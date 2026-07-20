@@ -28,6 +28,8 @@ export interface AiTask<Result> {
   schema: ZodType<Result>;
   timeoutMs: number;
   allowedTools?: readonly string[];
+  /** Skips both the cache read and write; set by tasks whose input is inherently always-fresh. */
+  noCache?: boolean;
 }
 
 /** The only AI surface available to feature modules. */

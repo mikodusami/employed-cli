@@ -41,13 +41,15 @@ export class DefaultAiRunner implements AiRunner {
     const failures: string[] = [];
     for (const provider of this.providers) {
       const cacheKey = buildCacheKey(provider.name, task.templateId, task.inputDigest);
-      const cached = this.repositories.aiCache.find(cacheKey);
-      if (cached) {
-        const parsed = parseResponse(cached.response, task.schema);
-        if (parsed.success) {
-          return parsed.value as Result;
+      if (!task.noCache) {
+        const cached = this.repositories.aiCache.find(cacheKey);
+        if (cached) {
+          const parsed = parseResponse(cached.response, task.schema);
+          if (parsed.success) {
+            return parsed.value as Result;
+          }
+          this.debug(`Ignoring invalid AI cache entry for ${provider.name}: ${parsed.issues}`);
         }
-        this.debug(`Ignoring invalid AI cache entry for ${provider.name}: ${parsed.issues}`);
       }
 
       const status = await provider.isAvailable();
@@ -58,11 +60,13 @@ export class DefaultAiRunner implements AiRunner {
 
       try {
         const value = await this.runAndValidate(provider, task);
-        this.repositories.aiCache.upsert(
-          cacheKey,
-          JSON.stringify(value),
-          this.now().toISOString(),
-        );
+        if (!task.noCache) {
+          this.repositories.aiCache.upsert(
+            cacheKey,
+            JSON.stringify(value),
+            this.now().toISOString(),
+          );
+        }
         return value;
       } catch (error: unknown) {
         if (error instanceof AiValidationError || error instanceof AiBudgetExceededError) {
