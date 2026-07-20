@@ -2,4 +2,10 @@
 export { ConfigError, ConfigService } from './loader.js';
 export { ScaffoldService } from './scaffold.js';
 export type { ScaffoldResult } from './scaffold.js';
-export type { AppConfig, CompaniesFile, KeywordsFile } from './schema.js';
+export type {
+  AiConfig,
+  AppConfig,
+  CompaniesFile,
+  KeywordsFile,
+  ProviderName,
+} from './schema.js';
