@@ -133,11 +133,14 @@ test('cache revalidates GET responses and bypasses POST requests', async () => {
 });
 
 test('robots denial marks detection manual while 404 allows detection', async () => {
-  const disallowing = routedClient((url) =>
-    url.endsWith('/robots.txt')
-      ? { ...okResult(url), body: 'User-agent: *\nDisallow: /jobs\nAllow: /jobs/public' }
-      : { ...okResult(url), body: '' },
-  );
+  let robotsCalls = 0;
+  const disallowing = routedClient((url) => {
+    if (url.endsWith('/robots.txt')) {
+      robotsCalls += 1;
+      return { ...okResult(url), body: 'User-agent: *\nDisallow: /jobs\nAllow: /jobs/public' };
+    }
+    return { ...okResult(url), body: '' };
+  });
   const gate = new RobotsGate(disallowing);
   assert.equal(await gate.isAllowed('https://example.com/jobs/public/1'), true);
   const denied = await new SignatureDetector(disallowing, gate, true).detect(
@@ -145,6 +148,7 @@ test('robots denial marks detection manual while 404 allows detection', async ()
   );
   assert.equal(denied.method, 'manual');
   assert.match(denied.detail ?? '', /robots\.txt disallows/);
+  assert.equal(robotsCalls, 1);
 
   const allowing = routedClient((url) =>
     url.endsWith('/robots.txt')
