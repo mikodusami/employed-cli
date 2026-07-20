@@ -12,3 +12,4 @@ export type {
   ProviderName,
   StatsConfig,
 } from './schema.js';
+export type { KnownAtsFile } from '../scrape/known-ats.js';
