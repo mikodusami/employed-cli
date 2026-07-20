@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { LOGS_DIR, REPORTS_DIR } from '../constants.js';
-import { APP_CONFIG_TEMPLATE, COMPANIES_TEMPLATE, KEYWORDS_TEMPLATE } from './templates.js';
+import {
+  APP_CONFIG_TEMPLATE,
+  COMPANIES_TEMPLATE,
+  KEYWORDS_TEMPLATE,
+  KNOWN_ATS_TEMPLATE,
+} from './templates.js';
 
 /** Files created and preserved by one scaffold operation. */
 export interface ScaffoldResult {
@@ -27,6 +32,7 @@ export class ScaffoldService {
       ['config.yaml', APP_CONFIG_TEMPLATE],
       ['companies.yaml', COMPANIES_TEMPLATE],
       ['keywords.yaml', KEYWORDS_TEMPLATE],
+      ['known_ats.yaml', KNOWN_ATS_TEMPLATE],
     ] as const;
 
     for (const [fileName, contents] of templates) {
