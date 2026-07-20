@@ -6,6 +6,14 @@ import ora, { type Ora } from 'ora';
 import { VERSION } from '../constants.js';
 import type { Band, Health } from '../db/index.js';
 
+const PALETTE = {
+  green: chalk.hex('#4ADE80'),
+  cyan: chalk.hex('#22D3EE'),
+  yellow: chalk.hex('#FACC15'),
+  red: chalk.hex('#F87171'),
+  dim: chalk.gray,
+} as const;
+
 /** A progress indicator with animated and plain-text implementations. */
 export interface Spinner {
   start(): Spinner;
@@ -30,10 +38,10 @@ export interface UI {
 /** Applies the shared terminal color associated with a scraper health state. */
 export function styleHealth(health: Health): string {
   const styles: Readonly<Record<Health, (value: string) => string>> = {
-    ok: chalk.green,
-    degraded: chalk.yellow,
-    broken: chalk.red,
-    untested: chalk.dim,
+    ok: PALETTE.green,
+    degraded: PALETTE.yellow,
+    broken: PALETTE.red,
+    untested: PALETTE.dim,
   };
   return styles[health](health);
 }
@@ -41,29 +49,49 @@ export function styleHealth(health: Health): string {
 /** Applies the shared terminal color associated with a score band. */
 export function styleBand(band: Band): string {
   const styles: Readonly<Record<Band, (value: string) => string>> = {
-    A: chalk.green,
-    B: chalk.cyan,
-    C: chalk.yellow,
-    D: chalk.dim,
+    A: PALETTE.green,
+    B: PALETTE.cyan,
+    C: PALETTE.yellow,
+    D: PALETTE.dim,
   };
   return styles[band](band);
 }
 
 class AnimatedSpinner implements Spinner {
-  public constructor(private readonly indicator: Ora) {}
+  private timer: NodeJS.Timeout | null = null;
+  private started = false;
+
+  public constructor(
+    private readonly indicator: Ora,
+    private readonly beforeStart: () => void,
+  ) {}
 
   public start(): Spinner {
-    this.indicator.start();
+    this.beforeStart();
+    this.timer = setTimeout(() => {
+      this.started = true;
+      this.indicator.start();
+    }, 100);
     return this;
   }
 
   public succeed(text?: string): Spinner {
-    this.indicator.succeed(text);
+    this.cancelDelay();
+    if (this.started) {
+      this.indicator.succeed(text);
+    } else {
+      console.log(PALETTE.green(`✓ ${text ?? this.indicator.text}`));
+    }
     return this;
   }
 
   public fail(text?: string): Spinner {
-    this.indicator.fail(text);
+    this.cancelDelay();
+    if (this.started) {
+      this.indicator.fail(text);
+    } else {
+      console.error(PALETTE.red(`✗ ${text ?? this.indicator.text}`));
+    }
     return this;
   }
 
@@ -71,11 +99,20 @@ class AnimatedSpinner implements Spinner {
     this.indicator.text = text;
     return this;
   }
+
+  private cancelDelay(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
 }
 
 class AnimatedUI implements UI {
+  private hasBanner = false;
+
   public spinner(text: string): Spinner {
-    return new AnimatedSpinner(ora(text));
+    return new AnimatedSpinner(ora({ text, spinner: 'dots12' }), () => this.ensureBanner());
   }
 
   public success(message: string): void {
@@ -95,6 +132,7 @@ class AnimatedUI implements UI {
   }
 
   public heading(message: string): void {
+    this.ensureBanner();
     console.log(chalk.bold.underline(message));
   }
 
@@ -103,10 +141,11 @@ class AnimatedUI implements UI {
   }
 
   public banner(): void {
-    console.log(chalk.bold.cyan(`employed v${VERSION}`));
+    this.ensureBanner();
   }
 
   public table(headers: string[], rows: string[][]): void {
+    this.ensureBanner();
     const healthIndex = headers.findIndex((header) => header.toLowerCase() === 'health');
     const bandIndex = headers.findIndex((header) => header.toLowerCase() === 'band');
     const table = new Table({ head: headers.map((header) => chalk.bold(header)) });
@@ -123,6 +162,23 @@ class AnimatedUI implements UI {
       table.push(styledRow);
     }
     console.log(table.toString());
+  }
+
+  private ensureBanner(): void {
+    if (this.hasBanner) {
+      return;
+    }
+    this.hasBanner = true;
+    const lines = [
+      '  ___ _ __ ___  _ __ | | ___  _   _  ___  __| |',
+      " / _ \\ '_ ` _ \\| '_ \\| |/ _ \\| | | |/ _ \\/ _` |",
+      '|  __/ | | | | | |_) | | (_) | |_| |  __/ (_| |',
+      ' \\___|_| |_| |_| .__/|_|\\___/ \\__, |\\___|\\__,_|',
+      '               |_|           |___/                 ',
+    ];
+    const colors = ['#22D3EE', '#38BDF8', '#818CF8', '#A78BFA', '#C084FC'];
+    lines.forEach((line, index) => console.log(chalk.hex(colors[index] ?? '#22D3EE')(line)));
+    console.log(chalk.dim(`  v${VERSION} · your job search, in motion\n`));
   }
 }
 
