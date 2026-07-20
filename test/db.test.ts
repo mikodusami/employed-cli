@@ -10,7 +10,7 @@ import Database from 'better-sqlite3';
 import { createDb, Repositories, withTransaction } from '../src/db/index.js';
 import { migrate, type Migration } from '../src/db/migrate.js';
 
-test('fresh database contains seven tables with foreign keys and WAL enabled', () => {
+test('fresh database contains eight tables with foreign keys and WAL enabled', () => {
   const baseDirectory = mkdtempSync(path.join(tmpdir(), 'employed-db-'));
   const database = createDb(path.join(baseDirectory, 'employed.db'));
   const tables = database
@@ -28,10 +28,11 @@ test('fresh database contains seven tables with foreign keys and WAL enabled', (
     'companies',
     'email_threads',
     'events',
+    'http_cache',
     'jobs',
     'runs',
   ]);
-  assert.equal(database.pragma('user_version', { simple: true }), 1);
+  assert.equal(database.pragma('user_version', { simple: true }), 2);
   assert.equal(database.pragma('foreign_keys', { simple: true }), 1);
   assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
   const companyColumns = database
@@ -53,7 +54,23 @@ test('fresh database contains seven tables with foreign keys and WAL enabled', (
   ]);
 
   migrate(database);
-  assert.equal(database.pragma('user_version', { simple: true }), 1);
+  assert.equal(database.pragma('user_version', { simple: true }), 2);
+  database.close();
+});
+
+test('migration 2 upgrades a version-1 database in place', () => {
+  const database = new Database(':memory:');
+  database.pragma('user_version = 1');
+
+  migrate(database);
+
+  assert.equal(database.pragma('user_version', { simple: true }), 2);
+  const cacheTable = database
+    .prepare<[], { name: string }>(
+      "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'http_cache'",
+    )
+    .get();
+  assert.equal(cacheTable?.name, 'http_cache');
   database.close();
 });
 
