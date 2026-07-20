@@ -91,6 +91,7 @@ test('retry handles transient responses and leaves 404 untouched', async () => {
 
 test('cache revalidates GET responses and bypasses POST requests', async () => {
   const database = createDb(':memory:');
+  const cacheHits: string[] = [];
   const seenOptions: FetchOpts[] = [];
   let getCalls = 0;
   let postCalls = 0;
@@ -108,7 +109,12 @@ test('cache revalidates GET responses and bypasses POST requests', async () => {
       return okResult(url);
     },
   };
-  const cache = new CachingHttpClient(inner, database, () => new Date('2026-07-19T00:00:00Z'));
+  const cache = new CachingHttpClient(
+    inner,
+    database,
+    () => new Date('2026-07-19T00:00:00Z'),
+    (url) => cacheHits.push(url),
+  );
 
   await cache.fetchText('https://example.com/jobs');
   const second = await cache.fetchText('https://example.com/jobs');
@@ -116,6 +122,7 @@ test('cache revalidates GET responses and bypasses POST requests', async () => {
 
   assert.equal(second.body, 'cached body');
   assert.equal(second.fromCache, true);
+  assert.deepEqual(cacheHits, ['https://example.com/jobs']);
   assert.equal(seenOptions[1]?.headers?.['if-none-match'], '"v1"');
   assert.equal(postCalls, 1);
   assert.equal(
