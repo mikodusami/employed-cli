@@ -31,6 +31,7 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
     detector: context.detector,
     ai: context.ai,
     config: context.config.loadApp(),
+    keywords: context.config.loadKeywords(),
   });
   try {
     const result = await runtime.scraper.scrapeCompany(company);
@@ -53,9 +54,18 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
       context.ui.info(result.heal.note);
     }
     if (result.newJobs.length > 0) {
+      const rankedJobs = [...result.newJobs].sort(
+        (left, right) => (right.score ?? Number.NEGATIVE_INFINITY) -
+          (left.score ?? Number.NEGATIVE_INFINITY),
+      );
       context.ui.table(
-        ['Title', 'Location', 'URL'],
-        result.newJobs.map((job) => [job.title, job.location ?? '—', job.url]),
+        ['Score', 'Band', 'Title', 'Location'],
+        rankedJobs.map((job) => [
+          job.score?.toString() ?? '—',
+          job.band ?? '—',
+          job.title,
+          job.location ?? '—',
+        ]),
       );
     }
   } finally {
