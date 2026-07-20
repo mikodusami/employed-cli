@@ -1345,3 +1345,72 @@ Every stateful flow below starts from a blank workspace and destroys it afterwar
    while SQLite `total_changes()` remains unchanged.
 7. Run `rm -rf "$EMPLOYED_DIR"`.
 8. Run `unset EMPLOYED_DIR`.
+
+# Layer 6, Unit 3 — portability, setup guide, and animation polish
+
+Run `npm run build` first. Every stateful flow owns and destroys all temporary workspaces it creates.
+
+### Flow 1: Round-trip a native snapshot through a fresh workspace
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add/scan a company and apply to a resulting job so all four exported datasets contain data.
+4. Run `employed export --json --out /tmp/employed-backup.json --no-animation`; confirm version `1`
+   and nonzero company, job, application, and event arrays.
+5. Run `export EMPLOYED_SOURCE_DIR="$EMPLOYED_DIR"`, then
+   `export EMPLOYED_DIR="$(mktemp -d)"` and `employed init --no-animation`.
+6. Run `employed import-hq /tmp/employed-backup.json --dry-run --no-animation`, confirm no writes,
+   then commit the import and compare a fresh export's four datasets with the original.
+7. Import again and confirm every created count is zero.
+8. Run `rm -rf "$EMPLOYED_SOURCE_DIR" "$EMPLOYED_DIR" /tmp/employed-backup.json`.
+9. Run `unset EMPLOYED_SOURCE_DIR` and `unset EMPLOYED_DIR`.
+
+### Flow 2: Import a legacy Job Search HQ backup safely
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Create `/tmp/job-search-hq.json` with an interview-status `apps` entry, one new scoring keyword,
+   and one `seen` thread id.
+4. Dry-run `employed import-hq /tmp/job-search-hq.json --dry-run --no-animation`; confirm it predicts
+   one application, two events, one scoring key, and one thread while SQLite stays empty.
+5. Commit the import. Confirm the `applied` and `interview` events are tagged `Imported`, the thread
+   is ledgered, and the new keyword appears without replacing existing weights.
+6. Import again and confirm applications and threads are skipped with no duplicate events.
+7. Run `rm -rf "$EMPLOYED_DIR" /tmp/job-search-hq.json`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Open both CSV exports in a spreadsheet
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Populate a job and application, including a note with a comma or newline.
+4. Export `--csv --kind applications --out /tmp/applications.csv` and
+   `--csv --kind jobs --out /tmp/jobs.csv`.
+5. Open both files in a spreadsheet and confirm columns align and quoted content stays in one cell.
+6. Run `rm -rf "$EMPLOYED_DIR" /tmp/applications.csv /tmp/jobs.csv`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify animated and plain output
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. In a TTY, run `employed new`; confirm the gradient wordmark appears once and fast work does not
+   flash a short-lived spinner.
+4. Add two companies and run `employed run`; confirm progress advances from `[1/2] Company` to
+   `[2/2] Company` rather than stacking spinners.
+5. Run `employed new --no-animation` and `employed export --json | head`; confirm neither contains
+   the wordmark or ANSI escapes.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Follow the README on a clean checkout
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. In a clean checkout, follow README prerequisites, quick start, one AI-provider setup, company
+   import, doctor, and a no-email run.
+4. Confirm doctor explains intentionally omitted integrations and `employed run --no-ai` writes a
+   daily report.
+5. Run `npm test`; confirm portability coverage passes without live services.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
