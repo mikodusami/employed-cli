@@ -228,9 +228,10 @@ Run `npm run build`; then use the isolated-state protocol before each flow.
 
 ### Flow 4: Distinguish an unsupported source
 
-1. Add Linear from `https://jobs.ashbyhq.com/linear` if it is not already registered.
-2. Run `employed scan --company Linear --no-animation`.
-3. Confirm the command reports that Linear was skipped because no Ashby source is implemented yet,
+1. Add Example from `https://example.com/careers`.
+2. Confirm detection records its method as `unknown`.
+3. Run `employed scan --company Example --no-animation`.
+4. Confirm the command reports that Example was skipped because no source exists for `unknown`,
    rather than reporting an adapter failure.
 
 ### Flow 5: Verify contained adapter failures offline
@@ -247,3 +248,51 @@ Run `npm run build`; then use the isolated-state protocol before each flow.
 2. Confirm all fixture tests and opt-in public-board checks pass.
 3. Remember that live job counts can change; assert nonzero yield and correct provider, not a fixed
    posting count.
+
+## Layer 3, Unit 3 — Remaining Tier-1 ATS adapters
+
+### Flow 1: Add and scan an Ashby board
+
+1. Add Linear from `https://jobs.ashbyhq.com/linear`.
+2. Confirm detection reports `ashby`, the smoke test marks health `ok`, and yield is nonzero.
+3. Run `employed scan --company Linear --no-animation` and confirm jobs are stored and displayed.
+4. Run the scan again and confirm it reports the same seen count and `0 new`.
+
+### Flow 2: Add and scan a SmartRecruiters board
+
+1. Add Visa from `https://careers.smartrecruiters.com/Visa`.
+2. Confirm detection reports `smartrecruiters` and health becomes `ok`.
+3. Run `employed scan --company Visa --no-animation`.
+4. Confirm the scan succeeds with nonzero jobs; title and URL are populated even when descriptions
+   are absent.
+
+### Flow 3: Add and scan a Recruitee board
+
+1. Add Freeday from `https://freeday.recruitee.com`.
+2. Confirm detection reports `recruitee`, slug `freeday`, and health becomes `ok`.
+3. Run `employed scan --company Freeday --no-animation`.
+4. Confirm the new-job table contains Recruitee titles, locations, and public careers URLs.
+
+### Flow 4: Add and scan a paginated Workday board
+
+1. Add NVIDIA from `https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite`.
+2. Confirm detection reports `workday`, slug `nvidia|wd5|NVIDIAExternalCareerSite`, and health `ok`.
+3. Run `employed scan --company NVIDIA --no-animation`; allow time for bounded pagination.
+4. Confirm the scan succeeds, every displayed URL contains `/NVIDIAExternalCareerSite/job/`, and
+   descriptions are absent without causing an error.
+
+### Flow 5: Verify the Workday pagination guards offline
+
+1. Run `npm test` without `EMPLOYED_LIVE_ATS_TESTS` set.
+2. Confirm the two-page-plus-empty-terminator test returns all three fixture jobs.
+3. Confirm malformed slug validation performs zero HTTP calls and the infinite fixture stops at
+   exactly 25 pages.
+4. Confirm the live test is the only skipped test.
+
+### Flow 6: Verify three public boards per new adapter
+
+1. Run `EMPLOYED_LIVE_ATS_TESTS=1 npm test` while connected to the internet.
+2. Confirm the opt-in test checks Linear, Notion, and Ramp (Ashby); Visa, Ubisoft, and Bosch
+   (SmartRecruiters); Freeday, Polaroid, and Riverflex (Recruitee); and NVIDIA, Salesforce, and Citi
+   (Workday).
+3. Confirm all tests pass with zero skips; treat later failures as potential public-API drift.
