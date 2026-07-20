@@ -574,3 +574,75 @@ per development machine. Every flow below creates and destroys an independent Em
    skipped.
 8. Run `rm -rf "$EMPLOYED_DIR"`.
 9. Run `unset EMPLOYED_DIR`.
+
+## Layer 4, Unit 1 — Scoring engine
+
+Run `npm run build` first. Each flow below creates and removes its own Employed workspace; no jobs or
+keyword edits are reused by another flow.
+
+### Flow 1: Verify the exact scoring model offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test`.
+4. Confirm `New Grad Software Engineer 2026` plus the matching fixture description scores exactly
+   `39` in band A.
+5. Confirm `Senior Staff Engineer` scores `-32`, every 30/29/18/17/8/7 band boundary passes, and
+   uppercase and lowercase titles produce byte-identical results.
+6. Confirm title-only and matched-keyword deduplication cases pass without importing DB, HTTP, or
+   filesystem modules into the engine test.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: See ranked scores during a live scan
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add a currently available Tier-1 board, for example
+   `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation`.
+4. Run `employed scan --company "Highspot" --no-animation`.
+5. Confirm the new-job table columns are Score, Band, Title, and Location in that order.
+6. Confirm rows are ordered from highest score to lowest score and negative senior/staff signals
+   reduce otherwise-positive matches.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Re-score existing jobs after editing a weight
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan one Tier-1 company so the workspace contains open jobs.
+4. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id,title,score,band FROM jobs ORDER BY id LIMIT 5;"`
+   and save the displayed values.
+5. Add a phrase from one displayed title to the `title` section of
+   `$EMPLOYED_DIR/keywords.yaml` with weight `20`.
+6. Run `employed rescore --no-animation`; confirm it reports the number of open jobs updated without
+   fetching any company.
+7. Repeat the SQLite query and confirm matching jobs gained 40 points and their bands changed when a
+   threshold was crossed.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify title-only scoring remains explicit
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan a SmartRecruiters or Workday company whose list endpoint omits descriptions.
+4. Query its jobs with
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT title,description,score,band FROM jobs LIMIT 10;"`.
+5. Confirm null-description jobs still have integer scores and bands derived from title signals.
+6. Run `npm test` and confirm the engine marks blank and null descriptions as `titleOnly: true`.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Verify score persistence and network-free re-scoring offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test` without any live-test environment variable.
+4. Confirm the scrape fixture persists score `10`, band C, and exactly
+   `["account executive","ai","apac"]`, then preserves those values on its unchanged second scan.
+5. Confirm the re-score fixture changes an open job from score 4/band D to score 20/band B after a
+   weight edit, leaves a dismissed job unchanged, and records zero HTTP calls.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
