@@ -64,6 +64,17 @@ export const AppConfigSchema = z.object({
       maxRetries: z.number().int().min(1).max(10).default(3),
       respectRobots: z.boolean().default(true),
       autoGenerateOnAdd: z.boolean().default(true),
+      heal: z
+        .object({
+          maxPerCompany: z.number().int().min(0).default(2),
+          maxPerRun: z.number().int().min(0).default(5),
+        })
+        .default({ maxPerCompany: 2, maxPerRun: 5 }),
+      playwright: z
+        .object({
+          navTimeoutMs: z.number().int().positive().default(30_000),
+        })
+        .default({ navTimeoutMs: 30_000 }),
     })
     .default({
       time: '07:00',
@@ -72,6 +83,8 @@ export const AppConfigSchema = z.object({
       maxRetries: 3,
       respectRobots: true,
       autoGenerateOnAdd: true,
+      heal: { maxPerCompany: 2, maxPerRun: 5 },
+      playwright: { navTimeoutMs: 30_000 },
     }),
   email: z
     .object({
