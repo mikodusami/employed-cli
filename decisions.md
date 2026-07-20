@@ -624,3 +624,30 @@ keeps diagnosis fast, read-only, and free of AI budget while still returning pro
 guidance. Missing scheduler and disabled optional features are warnings; unavailable enabled
 providers, Gmail/SMTP failures, broken scrapers, corrupt SQLite, and incomplete runs are problems.
 Default doctor remains exit zero, while `--strict` maps any problem to a nonzero process status.
+
+## 2026-07-20T17:24:45-04:00 — Versioned exports preserve complete core state
+
+JSON export includes every company, every job lifecycle state, every application, and the complete
+append-only event log with stable IDs. Native version-1 snapshots can be restored through
+`import-hq`, making the documented export path a real recovery path rather than a write-only format.
+Restore uses the repository transaction boundary, preserves foreign keys, skips byte-equivalent
+rows on rerun, and rejects identity or uniqueness conflicts instead of silently attaching imported
+children to unrelated local parents. CSV remains a presentation export with RFC-style quoting.
+
+## 2026-07-20T17:24:45-04:00 — HQ migration only fills missing local state
+
+The lenient HQ schema accepts common camelCase and snake_case field variants while requiring the
+minimum stable identities: company for applications and a thread id for seen mail. Existing
+company-and-role applications and thread ledger entries are skipped, never updated. Incoming
+scoring weights are added only when a keyword is absent locally. New applications receive an
+import-tagged applied event and, when appropriate, a second imported status event so event-scan
+analytics remain truthful. Dry-run shares the exact planning logic but performs no transaction or
+file write.
+
+## 2026-07-20T17:24:45-04:00 — Animation remains an output-layer policy
+
+The animated UI owns the gradient wordmark, unified health/band palette, and delayed spinner start;
+operations completing inside 100ms print one stable success line instead of flashing a spinner.
+Plain output remains unchanged under pipes, CI, and `--no-animation`. Run orchestration exposes only
+a data callback for progress, while the command translates it into the existing spinner update
+contract, keeping terminal styling out of services.
