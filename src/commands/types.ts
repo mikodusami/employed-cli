@@ -10,8 +10,8 @@ import type { UI } from '../ui/index.js';
 export interface CommandContext {
   ui: UI;
   config: ConfigService;
-  database: Database.Database;
-  repositories: Repositories;
+  db: Database.Database;
+  repos: Repositories;
 }
 
 /** Registers one command and its options on the root program. */
