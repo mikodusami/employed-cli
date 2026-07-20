@@ -81,7 +81,7 @@ export const CompaniesFileSchema = z.object({
     .array(
       z.object({
         name: z.string().trim().min(1),
-        url: z.url(),
+        url: z.string().trim().min(1),
         tier: CompanyTierSchema.optional(),
       }),
     )
