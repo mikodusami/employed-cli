@@ -311,6 +311,33 @@ test('a crash after scraping still closes the runs row in finally', async () => 
   database.close();
 });
 
+test('failed email delivery preserves the report and completes the run', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const reportsDirectory = mkdtempSync(path.join(tmpdir(), 'employed-reports-'));
+  const service = new RunService({
+    repositories,
+    http: new GreenhouseFixtureHttp(),
+    detector: new UnknownDetector(),
+    ai: null,
+    config: baseConfig(),
+    keywords: emptyKeywords(),
+    reportsDirectory,
+    emailService: {
+      sendDigest: () => Promise.reject(new Error('SMTP unavailable')),
+    },
+  });
+
+  const summary = await service.execute({ email: true });
+
+  assert.equal(summary.email.attempted, true);
+  assert.equal(summary.email.sent, false);
+  assert.match(summary.email.error ?? '', /SMTP unavailable/);
+  assert.match(readFileSync(summary.reportPath, 'utf8'), /employed Daily Report/i);
+  assert.ok(repositories.runs.latest()?.finished_at);
+  database.close();
+});
+
 class GreenhouseFixtureHttp implements HttpClient {
   public async fetchText(url: string): Promise<FetchResult> {
     return {
