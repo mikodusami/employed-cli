@@ -61,7 +61,11 @@ export class CompanyRepository {
     `);
     this.updateHealthStatement = database.prepare(`
       UPDATE companies
-      SET health = @health
+      SET health = @health,
+          consecutive_failures = CASE
+            WHEN @health = 'ok' THEN 0
+            ELSE consecutive_failures
+          END
       WHERE id = @id
     `);
     this.recordSuccessStatement = database.prepare(`
