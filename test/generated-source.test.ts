@@ -2,9 +2,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import type { Page } from 'playwright';
 
+import { BrowserPool } from '../src/scrape/browser.js';
 import type { ScraperConfig } from '../src/scrape/config.js';
-import { GeneratedSource } from '../src/scrape/generated.js';
+import { GeneratedSource, PlaywrightGeneratedSource } from '../src/scrape/generated.js';
 import type { CompanyRow } from '../src/db/index.js';
 import { RequiresRenderError } from '../src/util/errors.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
@@ -69,6 +71,109 @@ test('render-only pagination escalates without making an HTTP request', async ()
   await assert.rejects(() => source.fetchPostings(company()), RequiresRenderError);
   assert.deepEqual(http.urls, []);
 });
+
+test('playwright acquisition extracts client-rendered jobs from the shared path', async () => {
+  const staticSource = new GeneratedSource(
+    new FixtureHttp({ 'https://example.com/careers': '<html><body></body></html>' }),
+    config('none', null, 1),
+  );
+  const rendered = renderedPage(pageOne, pageOne);
+  const source = new PlaywrightGeneratedSource(
+    new RenderedPool(rendered.page),
+    { ...config('none', null, 1), strategy: 'playwright' },
+  );
+
+  assert.equal((await staticSource.fetchPostings(company())).length, 0);
+  assert.equal((await source.fetchPostings(company())).length, 2);
+});
+
+test('playwright load-more clicks until the button disappears', async () => {
+  const initial = pageOne.replace(
+    '<a class="next" href="/page-2">Next</a>',
+    '<button class="more">More</button>',
+  );
+  const expanded = `${pageOne.replace('<a class="next" href="/page-2">Next</a>', '')}${pageTwo}`;
+  const rendered = renderedPage(initial, expanded);
+  const source = new PlaywrightGeneratedSource(
+    new RenderedPool(rendered.page),
+    { ...config('load-more-button', 'button.more', 4), strategy: 'playwright' },
+  );
+
+  assert.equal((await source.fetchPostings(company())).length, 3);
+  assert.equal(rendered.clicks, 1);
+});
+
+test('playwright infinite scroll stops when document height stabilizes', async () => {
+  const initial = pageOne.replace('<a class="next" href="/page-2">Next</a>', '');
+  const rendered = renderedPage(initial, `${initial}${pageTwo}`);
+  const source = new PlaywrightGeneratedSource(
+    new RenderedPool(rendered.page),
+    { ...config('infinite-scroll', null, 5), strategy: 'playwright' },
+  );
+
+  assert.equal((await source.fetchPostings(company())).length, 3);
+  assert.equal(rendered.scrolls, 2);
+});
+
+class RenderedPool extends BrowserPool {
+  public constructor(private readonly renderedPage: Page) {
+    super();
+  }
+
+  public override async page<Result>(operation: (page: Page) => Promise<Result>): Promise<Result> {
+    return operation(this.renderedPage);
+  }
+}
+
+function renderedPage(initialHtml: string, expandedHtml: string) {
+  let html = initialHtml;
+  let currentUrl = 'https://example.com/careers';
+  let clicks = 0;
+  let scrolls = 0;
+  let height = 100;
+  const page = {
+    goto: async (url: string) => {
+      currentUrl = url;
+      return null;
+    },
+    waitForSelector: async () => ({}),
+    content: async () => html,
+    url: () => currentUrl,
+    locator: (selector: string) => ({
+      first: () => ({
+        count: async () => (selector === 'button.more' && html.includes('button class="more"') ? 1 : 0),
+        isVisible: async () => html.includes('button class="more"'),
+        click: async () => {
+          clicks += 1;
+          html = expandedHtml;
+        },
+        getAttribute: async () => null,
+      }),
+    }),
+    waitForLoadState: async () => undefined,
+    waitForTimeout: async () => undefined,
+    evaluate: async (operation: () => unknown) => {
+      if (operation.toString().includes('scrollTo')) {
+        scrolls += 1;
+        if (scrolls === 1) {
+          html = expandedHtml;
+          height = 200;
+        }
+        return undefined;
+      }
+      return height;
+    },
+  } as unknown as Page;
+  return {
+    page,
+    get clicks() {
+      return clicks;
+    },
+    get scrolls() {
+      return scrolls;
+    },
+  };
+}
 
 class FixtureHttp implements HttpClient {
   public readonly urls: string[] = [];
