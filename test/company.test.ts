@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createDb, Repositories } from '../src/db/index.js';
 import { SignatureDetector } from '../src/scrape/detect.js';
 import { CompanyService } from '../src/services/company.js';
+import { ScrapeService } from '../src/services/scrape.js';
 import { ValidationError } from '../src/util/errors.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
 
@@ -19,13 +20,19 @@ class FixtureHttpClient implements HttpClient {
   }
 }
 
-function createDetector(): SignatureDetector {
-  return new SignatureDetector(new FixtureHttpClient());
+function createService(database: ReturnType<typeof createDb>): CompanyService {
+  const http = new FixtureHttpClient();
+  const repositories = new Repositories(database);
+  return new CompanyService(
+    repositories,
+    new SignatureDetector(http),
+    new ScrapeService(repositories, http),
+  );
 }
 
 test('add inserts an untested company and detects through the injected seam', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), createDetector());
+  const service = createService(database);
   const result = await service.add({
     name: 'Stripe',
     url: 'https://stripe.com/jobs#openings',
@@ -42,7 +49,7 @@ test('add inserts an untested company and detects through the injected seam', as
 
 test('case-insensitive duplicate names do not insert a second company', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), createDetector());
+  const service = createService(database);
   await service.add({ name: 'Stripe', url: 'https://stripe.com/jobs' });
   const duplicate = await service.add({ name: 'stripe', url: 'https://example.com/jobs' });
 
@@ -54,7 +61,7 @@ test('case-insensitive duplicate names do not insert a second company', async ()
 
 test('invalid or non-web careers URLs produce typed validation errors', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), createDetector());
+  const service = createService(database);
 
   await assert.rejects(
     () => service.add({ name: 'FTP Company', url: 'ftp://example.com/jobs' }),
@@ -70,7 +77,7 @@ test('invalid or non-web careers URLs produce typed validation errors', async ()
 
 test('batch import continues after one bad entry and reruns idempotently', async () => {
   const database = createDb(':memory:');
-  const service = new CompanyService(new Repositories(database), createDetector());
+  const service = createService(database);
   const companiesFile = {
     defaults: { tier: 'B' as const },
     companies: [
