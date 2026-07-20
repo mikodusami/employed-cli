@@ -52,3 +52,30 @@ test('HTTP client wraps network failures in HttpError', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('HTTP client posts JSON through the same request policy', async () => {
+  const originalFetch = globalThis.fetch;
+  let capturedInit: RequestInit | undefined;
+  globalThis.fetch = async (_input, init) => {
+    capturedInit = init;
+    return {
+      url: 'https://tenant.wd1.myworkdayjobs.com/wday/cxs/tenant/site/jobs',
+      status: 200,
+      text: async () => '{"total":0,"jobPostings":[]}',
+      headers: new Headers({ 'content-type': 'application/json' }),
+    } as Response;
+  };
+
+  try {
+    await new UndiciHttpClient().postJson('https://example.com/jobs', {
+      limit: 20,
+      offset: 0,
+    });
+    assert.equal(capturedInit?.method, 'POST');
+    assert.equal(new Headers(capturedInit?.headers).get('content-type'), 'application/json');
+    assert.equal(new Headers(capturedInit?.headers).get('user-agent'), HTTP_USER_AGENT);
+    assert.equal(capturedInit?.body, '{"limit":20,"offset":0}');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
