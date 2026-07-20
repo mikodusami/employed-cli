@@ -1,3 +1,71 @@
+## Layer 4, Unit 3: `employed run` Orchestration + Scheduler (§9)
+
+**What this is:** The keystone that ties Layers 1–4 into one command. `employed run` is the single idempotent entry point the scheduler fires every morning: scrape all companies (tier-aware, polite, self-healing) → score → write the report → optionally email. Plus the OS-level scheduler installer. This is the "jobs come to me at 7am" payoff. The discipline: `run` is _pure orchestration_ — it calls services built in prior units and owns run-scoped state (budgets, the observability row); it contains no scraping, scoring, or reporting logic of its own.
+
+---
+
+**Deliverables:**
+
+**`src/services/run.ts` — `RunService.execute(opts): RunSummary`:**
+
+The orchestration spine. Flow:
+
+1. **Open a `runs` row** (`RunRepository.start()` — new repository, this unit) with `started_at`. This row is the observability record (§12); it's updated at the end, so a crashed run leaves a `started_at` with null `finished_at` — itself a useful signal `doctor` can flag.
+2. **Select companies by tier schedule** (§4 tier semantics — the cost-control heart of 150-company scale):
+   - Tier A → every run
+   - Tier B → every run via cheap paths (ATS/static); Playwright-only B companies every 2nd run
+   - Tier C → every 3rd run
+
+   "Every Nth run" needs a stable run counter — store it in a tiny `meta` key-value table (migration 3) or derive from `runs` count. The tier filter is a **pure function** `selectCompaniesForRun(companies, runIndex): CompanyRow[]` — unit-tested in isolation, no I/O. `--tier A,B,C` override forces a specific set (ignores the schedule).
+
+3. **Scrape the selected set** through `ScrapeService`, threading the run-scoped `HealBudget` (from Layer 3 Unit 7) so global heal caps apply across the whole run. Each company: scrape → (heal on failure) → score → upsert, all already built. `run` just loops and aggregates. **One company's failure never aborts the loop** (§12) — failures collect into an array for the `runs.failures` JSON and the report.
+4. **Lifecycle sweep:** mark jobs `closed` that were absent for 2 consecutive successful scrapes of their company (§5/§7.5 — the deferred `markClosedIfUnseen`, implemented now that "a run" is a real concept). Needs per-company "seen this run" tracking against last run's set.
+5. **Gmail sync** — reserved call site (`if (ctx.ai && config gmail enabled) syncService.run('cron')`), a no-op stub until Layer 5. Placing the hook now means Layer 5 wires in without touching `run`.
+6. **Build + write the report** (Layer 4 Unit 2), passing the just-computed `RunStats` (companies scanned, jobs seen/new, failures, scrapers healed/broken, AI calls) so the report header is populated. Optional email — reserved hook, delivered in Layer 6.
+7. **Close the `runs` row** (`finished_at`, all counts, failures JSON, `ai_calls` from the runner's per-run counter) in a `finally` so it's recorded even on partial failure. `BrowserPool.close()` in the same `finally`.
+
+Returns a `RunSummary` the command renders. Emits progress through the UI (per-company spinner lines live, plain progress when scheduled).
+
+**`src/commands/run.ts` — `employed run [--email] [--no-ai] [--tier A,B,C]`:**
+
+Thin. `--no-ai` forces `ctx.ai` off for this invocation (degradation ladder on demand — Tier-1 scraping still works, generation/heal/gmail skip). `--email` flips the email hook. Renders the `RunSummary` as a terminal digest at the end; the markdown file is written unconditionally.
+
+**`src/services/schedule.ts` + `src/commands/schedule.ts` — `employed schedule install|remove|status [--at HH:MM]` (§9):**
+
+OS-detecting installer that _generates and prints_ the artifact for confirmation before writing:
+
+- **macOS (launchd):** write `~/Library/LaunchAgents/com.employed.daily.plist` with `StartCalendarInterval {Hour, Minute}` from `--at` (default from `config.run.time`), `RunAtLoad false`, stdout/stderr → `~/.employed/logs/`. Load via `launchctl`. launchd fires missed jobs on wake — call this out (matters for a laptop that's asleep at 7am).
+- **Linux (cron):** upsert a crontab line `M H * * * /path/to/employed run --email >> ~/.employed/logs/run.log 2>&1`.
+- `remove` unloads/removes; `status` reports whether installed and the next fire time. Never silently clobber an existing entry — detect and confirm.
+
+The absolute path to the `employed` binary is resolved at install time (`process.execPath` + script path, or the `npm link` global) and baked into the artifact — a scheduled job has no PATH assumptions.
+
+**`src/util/lock.ts` — run lock:**
+
+A pidfile at `~/.employed/run.lock` so a manual `run` and the 7am scheduled `run` can't collide (SQLite WAL tolerates concurrency, but double-scraping and double-reporting is wasteful and confusing). Acquire at run start, release in `finally`, stale-lock detection (pid not alive → reclaim). Small but important the moment scheduling is real.
+
+**Observability:** this unit makes the `runs` table live. `doctor` gains a "last run" line (when, duration, new jobs, failures) — small addition to the existing doctor command.
+
+**Architectural notes:**
+
+- `run` orchestrates; it owns _run-scoped state_ (run index, heal budget, AI budget counter, the `runs` row, the lock) and nothing else. Every actual capability is a prior unit's service. If `run` grows domain logic, it's misplaced.
+- Idempotency is a hard requirement (§9): re-running the same day is safe — dedupe (upsert), report overwrite, and the lock guarantee it. Test this explicitly.
+- The tier scheduler is pure and unit-tested — the one piece of genuinely new logic here, and the one most likely to have off-by-one "every Nth run" bugs.
+- Reserved hooks (Gmail sync, email) are wired as call sites now so Layers 5–6 slot in without editing `run` — the orchestration shape is finalized here.
+
+**Acceptance criteria:**
+
+- `selectCompaniesForRun` unit tests: run index 1/2/3 select the right tier sets; Playwright-only B staggers on even runs; C on every 3rd; `--tier` override bypasses schedule.
+- `employed run` on a seeded set scrapes, scores, writes a dated report with populated run stats, closes the `runs` row with correct counts.
+- Idempotency: two consecutive `run`s same day → second finds 0 new, report overwrites, no duplicate jobs, both `runs` rows recorded.
+- Failure isolation: one company with a bad slug fails, `run` completes, failure appears in `runs.failures` and the report's needs-attention.
+- Lifecycle: a job absent for 2 successful scrapes flips to `closed`.
+- Heal budget threads correctly: global 5-heal cap holds across a multi-company run (not per-company).
+- `--no-ai`: Tier-1 companies still scrape; generation/heal skipped with notes; `runs.ai_calls = 0`.
+- `schedule install --at 07:30` produces a valid launchd plist (macOS) / crontab line (Linux) with an absolute binary path; `status` reports it; `remove` cleans up. Generated artifact shown before writing.
+- Lock: a second `run` while one holds the lock refuses cleanly; a stale lock (dead pid) is reclaimed.
+- Crash simulation: a thrown error mid-run still closes the `runs` row (finally) and releases the lock and browser.
+
 ## Layer 4, Unit 2: Report Writer + `employed new` (§7.9)
 
 **What this is:** Turning stored, scored jobs into the actual morning deliverable — a dated markdown file (always) and an interactive terminal view. This is the first output a _human reading the report_ consumes, so the discipline is separating the **report data model** (pure, queryable, JSON-able) from its **renderers** (markdown, terminal, later email). One data shape, three presentations — so adding the email digest in Layer 6 is a renderer, not a rewrite.
