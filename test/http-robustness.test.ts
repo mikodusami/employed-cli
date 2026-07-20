@@ -89,6 +89,31 @@ test('retry handles transient responses and leaves 404 untouched', async () => {
   assert.equal(missingCalls, 1);
 });
 
+test('retry attempts re-enter the polite domain queue', async () => {
+  let calls = 0;
+  const politeGaps: number[] = [];
+  const polite = new PoliteHttpClient(
+    client(async (url) => {
+      calls += 1;
+      return { ...okResult(url), status: calls === 1 ? 503 : 200 };
+    }),
+    {
+      concurrency: 1,
+      jitterMs: { min: 500, max: 500 },
+      sleep: async (milliseconds) => {
+        politeGaps.push(milliseconds);
+      },
+    },
+  );
+  const retry = new RetryHttpClient(polite, {
+    maxAttempts: 2,
+    sleep: async () => undefined,
+  });
+
+  assert.equal((await retry.fetchText('https://example.com/jobs')).status, 200);
+  assert.deepEqual(politeGaps, [500]);
+});
+
 test('cache revalidates GET responses and bypasses POST requests', async () => {
   const database = createDb(':memory:');
   const cacheHits: string[] = [];
