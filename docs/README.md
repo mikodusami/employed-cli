@@ -9,7 +9,7 @@ guides can be used as references.
 1. [Getting started](getting-started.md) — install the CLI, initialize a workspace, add your first
    company, run a scan, and read the first report.
 2. [Configuration](configuration.md) — understand every setting in `config.yaml`,
-   `companies.yaml`, and `keywords.yaml`.
+   `companies.yaml`, `known_ats.yaml`, and `keywords.yaml`.
 3. [Job discovery and scoring](job-discovery.md) — company tiers, ATS detection, generated
    scrapers, scanning, healing, score bands, and dismissing jobs.
 4. [Daily operation](daily-operation.md) — `run`, reports, SMTP delivery, scheduling, logs, and
@@ -41,6 +41,7 @@ The default workspace is `~/.employed`:
 ~/.employed/
 ├── config.yaml       application settings
 ├── companies.yaml    editable company watch list
+├── known_ats.yaml     optional verified ATS overrides
 ├── keywords.yaml     scoring profile
 ├── employed.db       SQLite source of truth
 ├── reports/          dated Markdown reports
