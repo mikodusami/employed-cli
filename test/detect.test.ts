@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { SignatureDetector } from '../src/scrape/detect.js';
+import { MAX_DETECTION_REQUESTS, SignatureDetector } from '../src/scrape/detect.js';
 import { HttpError } from '../src/util/errors.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
 
@@ -29,7 +29,7 @@ test('detector matches against the response final URL after redirects', async ()
       contentType: 'text/html',
     }),
   );
-  const result = await detector.detect('https://example.com/careers');
+  const result = await detector.detect(company('Redirected', 'https://example.com/careers'));
 
   assert.equal(result.method, 'lever');
   assert.equal(result.slug, 'redirected-company');
@@ -44,7 +44,7 @@ test('detector converts non-2xx responses into unknown result data', async () =>
       contentType: 'text/plain',
     }),
   );
-  const result = await detector.detect('https://example.com/careers');
+  const result = await detector.detect(company('Missing', 'https://example.com/careers'));
 
   assert.deepEqual(result, {
     method: 'unknown',
@@ -55,7 +55,7 @@ test('detector converts non-2xx responses into unknown result data', async () =>
 
 test('detector converts network errors into unknown result data', async () => {
   const result = await new SignatureDetector(new FailingHttpClient()).detect(
-    'https://unreachable.example',
+    company('Unreachable', 'https://unreachable.example'),
   );
 
   assert.deepEqual(result, {
@@ -75,6 +75,97 @@ test('detector returns a diagnostic unknown for an unmatched page', async () => 
     }),
   );
 
-  const result = await detector.detect('https://example.com');
-  assert.equal(result.detail, 'no supported ATS signature found');
+  const result = await detector.detect(company('Example', 'https://example.com'));
+  assert.equal(result.detail, 'no signature found after crawl (1 requests)');
 });
+
+test('known ATS override returns before any HTTP request', async () => {
+  let calls = 0;
+  const http: HttpClient = {
+    fetchText: async () => {
+      calls += 1;
+      throw new Error('override must not fetch');
+    },
+    postJson: async () => {
+      throw new Error('unexpected POST');
+    },
+  };
+  const detector = new SignatureDetector(http, undefined, false, {
+    airbnb: { method: 'greenhouse', slug: 'airbnb' },
+  });
+
+  const result = await detector.detect(company('Airbnb', 'https://careers.airbnb.com'));
+
+  assert.deepEqual(result, {
+    method: 'greenhouse',
+    slug: 'airbnb',
+    detail: 'known-ats override',
+  });
+  assert.equal(calls, 0);
+});
+
+test('detector follows landing to browse to detail and reports its crawl path', async () => {
+  const pages = new Map<string, string>([
+    [
+      'https://careers.example.com',
+      '<a href="/jobs">Browse opportunities</a>',
+    ],
+    [
+      'https://careers.example.com/jobs',
+      [1, 2, 3].map((id) => `<a href="/jobs/${id}">Role ${id}</a>`).join(''),
+    ],
+    [
+      'https://careers.example.com/jobs/1',
+      '<a href="https://job-boards.greenhouse.io/airbnb">Apply</a>',
+    ],
+  ]);
+  const detector = new SignatureDetector(routedHttp(pages));
+
+  const result = await detector.detect(company('Airbnb', 'https://careers.example.com'));
+
+  assert.equal(result.method, 'greenhouse');
+  assert.equal(result.slug, 'airbnb');
+  assert.match(result.detail ?? '', /matched at depth 2/);
+  assert.match(result.detail ?? '', /careers\.example\.com\/jobs\/1/);
+});
+
+test('pathological crawl never exceeds the hard request cap', async () => {
+  let calls = 0;
+  const http: HttpClient = {
+    fetchText: async (url) => {
+      calls += 1;
+      const body = url.endsWith('/root')
+        ? '<a href="/jobs-a">Jobs A</a><a href="/jobs-b">Jobs B</a>'
+        : [1, 2, 3, 4].map((id) => `<a href="${url}/positions/${id}">Role</a>`).join('');
+      return ok(url, body);
+    },
+    postJson: async () => {
+      throw new Error('unexpected POST');
+    },
+  };
+
+  const result = await new SignatureDetector(http).detect(
+    company('Pathological', 'https://example.com/root'),
+  );
+
+  assert.equal(result.method, 'unknown');
+  assert.equal(calls, MAX_DETECTION_REQUESTS);
+  assert.match(result.detail ?? '', /5 requests/);
+});
+
+function company(name: string, careersUrl: string) {
+  return { name, careers_url: careersUrl };
+}
+
+function routedHttp(pages: ReadonlyMap<string, string>): HttpClient {
+  return {
+    fetchText: async (url) => ok(url, pages.get(url) ?? '<html></html>'),
+    postJson: async () => {
+      throw new Error('unexpected POST');
+    },
+  };
+}
+
+function ok(url: string, body: string): FetchResult {
+  return { finalUrl: url, status: 200, body, contentType: 'text/html' };
+}
