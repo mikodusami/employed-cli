@@ -150,5 +150,6 @@ function createRuntime(context: CommandContext): ScrapeRuntime {
     detector: context.detector,
     ai: context.ai,
     config: context.config.loadApp(),
+    keywords: context.config.loadKeywords(),
   });
 }
