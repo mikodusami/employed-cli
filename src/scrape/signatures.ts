@@ -1,5 +1,6 @@
 /** Pure, ordered matching of ATS signatures in final URLs and HTML bodies. */
 import type { ScrapeMethod } from '../db/index.js';
+import { encodeWorkdaySlug } from './slug.js';
 
 /** A supported ATS signature and its extracted board identifier. */
 export interface SignatureMatch {
@@ -56,8 +57,11 @@ const signatureRules: readonly SignatureRule[] = [
       if (!match?.[1] || !match[2] || !match[3]) {
         return null;
       }
-      // Workday adapters decode this tenant|instance|site composite from the single DB slug.
-      return `${match[1]}|${match[2].toLowerCase()}|${decodeSlug(match[3])}`;
+      return encodeWorkdaySlug({
+        tenant: match[1],
+        instance: match[2],
+        site: decodeSlug(match[3]),
+      });
     },
   },
   {
