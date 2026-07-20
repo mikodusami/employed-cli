@@ -106,3 +106,20 @@ HTTP fakes. Current live checks are opt-in through `EMPLOYED_LIVE_ATS_TESTS=1`.
 Greenhouse matching accepts both the specification's `boards.greenhouse.io` host and the current
 `job-boards.greenhouse.io` host observed on Anthropic's live public board. This compatibility alias
 keeps historical embeds working while handling the provider's present hosted-domain convention.
+
+## 2026-07-19T21:40:25-04:00 — Canonical scrape source and adapter boundaries
+
+Every ATS and future generated scraper emits `RawPosting` through `ScrapeSource`. Greenhouse and
+Lever adapters validate only consumed fields with passthrough Zod schemas, reject missing required
+fields with typed `AdapterError` detail, and normalize HTML descriptions without a DOM dependency.
+Adapter selection remains a registry map, so services contain no provider switches.
+
+Dedupe computation is pure domain logic: native external IDs win verbatim; otherwise a SHA-256 hash
+combines normalized title and URL path. Repository uniqueness remains the enforcement boundary.
+The repository bundle exposes an atomic callback so `ScrapeService` can transact across repositories
+without receiving or leaking the raw SQLite driver.
+
+`ScrapeService` contains adapter failures per company, records failure streaks, and returns structured
+completed, skipped, or failed results. Detection-tail smoke tests update health only when an adapter
+returns at least one valid posting. SQLite `CURRENT_TIMESTAMP` values are parsed as UTC for accurate
+relative display.
