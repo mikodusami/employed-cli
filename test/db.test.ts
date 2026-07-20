@@ -34,6 +34,23 @@ test('fresh database contains seven tables with foreign keys and WAL enabled', (
   assert.equal(database.pragma('user_version', { simple: true }), 1);
   assert.equal(database.pragma('foreign_keys', { simple: true }), 1);
   assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
+  const companyColumns = database
+    .pragma('table_info(companies)')
+    .map((column) => (column as { name: string }).name);
+  assert.deepEqual(companyColumns, [
+    'id',
+    'name',
+    'slug',
+    'careers_url',
+    'tier',
+    'scrape_method',
+    'scraper_config',
+    'health',
+    'consecutive_failures',
+    'last_success',
+    'last_yield',
+    'created_at',
+  ]);
 
   migrate(database);
   assert.equal(database.pragma('user_version', { simple: true }), 1);
@@ -53,8 +70,8 @@ test('company repository round-trips and tracks scraper outcomes', () => {
   assert.equal(repositories.companies.recordFailure(inserted.id).consecutive_failures, 1);
   const recovered = repositories.companies.recordSuccess(inserted.id, 12);
   assert.equal(recovered.consecutive_failures, 0);
-  assert.equal(recovered.last_yield_count, 12);
-  assert.equal(recovered.health, 'healthy');
+  assert.equal(recovered.last_yield, 12);
+  assert.equal(recovered.health, 'ok');
   database.close();
 });
 
