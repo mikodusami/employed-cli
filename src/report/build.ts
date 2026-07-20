@@ -1,6 +1,6 @@
 /** Deterministic database projection into the renderer-neutral report model. */
 import type { Band, Repositories, RunRow } from '../db/index.js';
-import type { DailyReport, ReportJob, RunStats } from './model.js';
+import type { AutoAppliedUpdate, DailyReport, ReportJob, RunStats } from './model.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BANDS: readonly Band[] = ['A', 'B', 'C', 'D'];
@@ -10,6 +10,8 @@ export interface BuildReportDependencies {
   now: Date;
   /** Orchestration-computed stats for the run just completed, bypassing the `runs` table read. */
   runStats?: RunStats | null;
+  /** Cron-mode Gmail sync auto-applications from this run; defaults to none. */
+  autoApplied?: readonly AutoAppliedUpdate[];
 }
 
 export function buildDailyReport(
@@ -45,7 +47,7 @@ export function buildDailyReport(
     date,
     runStats,
     newJobsByBand,
-    autoApplied: [],
+    autoApplied: [...(dependencies.autoApplied ?? [])],
     needsAttention: brokenCompanies.map((company) => ({
       type: 'broken-scraper',
       company: company.name,
