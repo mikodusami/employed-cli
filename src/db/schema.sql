@@ -75,7 +75,7 @@ CREATE TABLE runs (
 );
 
 CREATE TABLE ai_cache (
-  key TEXT PRIMARY KEY,
+  key TEXT PRIMARY KEY, -- sha256(provider + template_id + input_digest)
   response JSON NOT NULL,
   created_at TEXT NOT NULL
 );
