@@ -12,12 +12,20 @@ email:
   # Email integration is configured in a later layer.
   enabled: false
 
+# AI provider settings. employed shells out to an installed AI CLI
+# (Claude Code or OpenAI Codex) for scraper generation, email
+# classification, and digest summaries. It never stores API keys —
+# each provider CLI manages its own auth (Claude subscription /
+# ChatGPT plan or OpenAI API key).
 ai:
-  provider: claude # claude | codex | chatgpt; selects which CLI binary employed shells out to.
-  # Allow Claude-assisted processing when that integration is configured.
-  enabled: true
-  # Safety limit for AI calls during one run.
-  maxCallsPerRun: 10
+  enabled: true               # master switch; false = run fully AI-free
+  preference: [claude, codex] # try in this order; first enabled+installed wins
+  providers:
+    claude:
+      enabled: true           # requires Claude Code installed (\`claude\` on PATH)
+    codex:
+      enabled: true           # requires Codex CLI installed (\`codex\` on PATH)
+  maxCallsPerRun: 10          # hard budget per run across all AI tasks
 `;
 
 /** Default company watch-list configuration with commented examples. */
