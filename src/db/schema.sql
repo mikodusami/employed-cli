@@ -1,104 +1,81 @@
+PRAGMA user_version = 1;
+
 CREATE TABLE companies (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
-  tier TEXT NOT NULL CHECK (tier IN ('A', 'B', 'C')),
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT,
   careers_url TEXT NOT NULL,
-  scrape_method TEXT NOT NULL DEFAULT 'unknown'
-    CHECK (scrape_method IN ('unknown', 'greenhouse', 'lever', 'ashby', 'workday', 'custom')),
-  scrape_slug TEXT,
-  scrape_config TEXT,
-  health TEXT NOT NULL DEFAULT 'unknown'
-    CHECK (health IN ('unknown', 'healthy', 'degraded', 'failing')),
-  last_success_at TEXT,
-  last_failure_at TEXT,
+  tier TEXT NOT NULL DEFAULT 'B',
+  scrape_method TEXT NOT NULL DEFAULT 'unknown',
+  scraper_config JSON,
+  health TEXT NOT NULL DEFAULT 'untested',
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
-  last_yield_count INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  last_success TEXT,
+  last_yield INTEGER,
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE jobs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  id INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id),
+  dedupe_key TEXT NOT NULL,
   title TEXT NOT NULL,
-  location TEXT,
   url TEXT NOT NULL,
+  location TEXT,
+  department TEXT,
   description TEXT,
-  salary TEXT,
-  posted_at TEXT,
+  score INTEGER,
+  band TEXT,
+  matched_kw JSON,
+  status TEXT NOT NULL DEFAULT 'open',
   first_seen TEXT NOT NULL,
   last_seen TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'open'
-    CHECK (status IN ('open', 'closed', 'dismissed')),
-  dedupe_key TEXT NOT NULL,
-  score REAL,
-  band TEXT CHECK (band IN ('strong', 'possible', 'weak')),
-  score_reason TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (company_id, dedupe_key)
 );
 
-CREATE INDEX jobs_company_id_index ON jobs(company_id);
-CREATE INDEX jobs_first_seen_index ON jobs(first_seen);
-CREATE INDEX jobs_status_index ON jobs(status);
-
 CREATE TABLE applications (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  job_id INTEGER NOT NULL UNIQUE REFERENCES jobs(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'planned'
-    CHECK (status IN ('planned', 'applied', 'interviewing', 'offered', 'rejected', 'withdrawn')),
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER REFERENCES jobs(id),
+  company_name TEXT NOT NULL,
+  role TEXT,
+  status TEXT NOT NULL DEFAULT 'applied',
   applied_at TEXT,
+  resume_version TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  first_response_at TEXT,
+  last_activity_at TEXT,
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-  type TEXT NOT NULL
-    CHECK (type IN ('created', 'applied', 'email', 'interview', 'offer', 'rejection', 'note')),
-  occurred_at TEXT NOT NULL,
-  description TEXT,
-  metadata TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id INTEGER PRIMARY KEY,
+  application_id INTEGER NOT NULL REFERENCES applications(id),
+  at TEXT NOT NULL,
+  type TEXT NOT NULL,
+  note TEXT
 );
 
-CREATE INDEX events_application_id_index ON events(application_id);
-
 CREATE TABLE email_threads (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL,
-  provider_thread_id TEXT NOT NULL UNIQUE,
-  subject TEXT,
-  last_message_at TEXT,
-  metadata TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  thread_id TEXT PRIMARY KEY,
+  application_id INTEGER REFERENCES applications(id),
+  classified_as TEXT,
+  processed_at TEXT NOT NULL
 );
 
 CREATE TABLE runs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  kind TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
+  id INTEGER PRIMARY KEY,
   started_at TEXT NOT NULL,
   finished_at TEXT,
-  companies_checked INTEGER NOT NULL DEFAULT 0,
-  jobs_found INTEGER NOT NULL DEFAULT 0,
-  jobs_added INTEGER NOT NULL DEFAULT 0,
-  error TEXT,
-  metadata TEXT
+  companies_scanned INTEGER,
+  jobs_seen INTEGER,
+  jobs_new INTEGER,
+  failures JSON,
+  claude_calls INTEGER,
+  notes TEXT
 );
 
 CREATE TABLE ai_cache (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cache_key TEXT NOT NULL UNIQUE,
-  provider TEXT NOT NULL,
-  model TEXT NOT NULL,
-  response TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  expires_at TEXT
+  key TEXT PRIMARY KEY,
+  response JSON NOT NULL,
+  created_at TEXT NOT NULL
 );
-
-CREATE INDEX ai_cache_expires_at_index ON ai_cache(expires_at);
