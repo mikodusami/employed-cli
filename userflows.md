@@ -340,5 +340,5 @@ Run `npm run build`; then use the isolated-state protocol before each flow.
 1. Run `npm test` and confirm the six-request scheduling fixture passes.
 2. Confirm same-domain requests are FIFO with jitter at or above the configured minimum, two domains
    may overlap, and observed global concurrency never exceeds the configured cap.
-3. Run `rg 'TODO\\(politeness-unit\\)|PAGE_DELAY_MS' src` and confirm it returns no matches.
+3. Run `rg 'TODO\(politeness-unit\)|PAGE_DELAY_MS' src` and confirm it returns no matches.
 4. Confirm Workday pagination tests still stop at 25 pages, now without adapter-owned sleeps.
