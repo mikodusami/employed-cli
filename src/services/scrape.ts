@@ -1,9 +1,11 @@
 /** Orchestrates source lookup, canonical job persistence, and scraper health outcomes. */
 import type { CompanyRow, JobRow, Repositories, ScrapeMethod } from '../db/index.js';
 import { getSource } from '../scrape/adapters/index.js';
+import type { BrowserPool } from '../scrape/browser.js';
 import { toJobInput } from '../scrape/normalize.js';
 import type { RawPosting } from '../scrape/types.js';
 import type { HttpClient } from '../util/http.js';
+import type { HealBudget, HealResult, HealService } from './heal.js';
 
 /** Structured result of scraping one company. */
 export interface CompanyScrapeResult {
@@ -13,6 +15,7 @@ export interface CompanyScrapeResult {
   new: number;
   newJobs: readonly JobRow[];
   reason: string | null;
+  heal: HealResult | null;
 }
 
 /** Structured result of checking whether an adapter yields usable postings. */
@@ -23,22 +26,55 @@ export interface SmokeResult {
   reason: string | null;
 }
 
+export interface ScrapeServiceOptions {
+  browsers?: BrowserPool;
+  healing?: {
+    service: HealService;
+    budget: HealBudget;
+  };
+}
+
 /** Contains per-company adapter failures so callers can continue processing. */
 export class ScrapeService {
   public constructor(
     private readonly repositories: Repositories,
     private readonly http: HttpClient,
+    private readonly options: ScrapeServiceOptions = {},
   ) {}
 
   /** Fetches, normalizes, and atomically upserts all jobs for one company. */
   public async scrapeCompany(company: CompanyRow): Promise<CompanyScrapeResult> {
-    const source = getSource(company.scrape_method, { http: this.http });
+    return this.scrapeAttempt(company, true, null);
+  }
+
+  private async scrapeAttempt(
+    company: CompanyRow,
+    allowHeal: boolean,
+    priorHeal: HealResult | null,
+  ): Promise<CompanyScrapeResult> {
+    const source = getSource(company.scrape_method, {
+      http: this.http,
+      browsers: this.options.browsers,
+    });
     if (!source) {
-      return result('skipped', company.scrape_method, `No source for ${company.scrape_method}.`);
+      return result(
+        'skipped',
+        company.scrape_method,
+        `No source for ${company.scrape_method}.`,
+        priorHeal,
+      );
     }
 
     try {
       const postings = await source.fetchPostings(company);
+      if (postings.length === 0 && isHealEligible(company)) {
+        return this.handleFailure(
+          company,
+          source.method,
+          'Previously healthy scraper returned zero postings.',
+          allowHeal,
+        );
+      }
       const today = new Date().toISOString();
       const newJobs = this.repositories.withTransaction(() => {
         const insertedJobs: JobRow[] = [];
@@ -58,17 +94,51 @@ export class ScrapeService {
         new: newJobs.length,
         newJobs,
         reason: null,
+        heal: priorHeal,
       };
     } catch (error: unknown) {
-      this.repositories.companies.recordFailure(company.id);
       const reason = error instanceof Error ? error.message : String(error);
-      return result('failed', source.method, reason);
+      return this.handleFailure(company, source.method, reason, allowHeal);
+    }
+  }
+
+  private async handleFailure(
+    company: CompanyRow,
+    method: ScrapeMethod,
+    reason: string,
+    allowHeal: boolean,
+  ): Promise<CompanyScrapeResult> {
+    const healing = this.options.healing;
+    if (!allowHeal || !healing || !isHealEligible(company)) {
+      this.repositories.companies.recordFailure(company.id);
+      if (isHealEligible(company)) {
+        this.repositories.companies.updateHealth(company.id, 'degraded');
+      }
+      return result('failed', method, reason, null);
+    }
+
+    try {
+      const heal = await healing.service.heal(company, healing.budget);
+      if (heal.healed) {
+        const repaired = this.repositories.companies.findByName(company.name);
+        if (repaired) {
+          return this.scrapeAttempt(repaired, false, heal);
+        }
+      }
+      return result('failed', method, `${reason} ${heal.note}`, heal);
+    } catch (error: unknown) {
+      const healReason = error instanceof Error ? error.message : String(error);
+      this.repositories.companies.updateHealth(company.id, 'broken');
+      return result('failed', method, `${reason} Heal failed: ${healReason}`, null);
     }
   }
 
   /** Runs one adapter fetch and records health only when usable jobs are returned. */
   public async smokeTest(company: CompanyRow): Promise<SmokeResult> {
-    const source = getSource(company.scrape_method, { http: this.http });
+    const source = getSource(company.scrape_method, {
+      http: this.http,
+      browsers: this.options.browsers,
+    });
     if (!source) {
       const reason = `No source for ${company.scrape_method}.`;
       return smokeResult(false, company.scrape_method, 0, reason);
@@ -110,8 +180,13 @@ function result(
   status: 'skipped' | 'failed',
   method: ScrapeMethod,
   reason: string,
+  heal: HealResult | null,
 ): CompanyScrapeResult {
-  return { status, method, seen: 0, new: 0, newJobs: [], reason };
+  return { status, method, seen: 0, new: 0, newJobs: [], reason, heal };
+}
+
+function isHealEligible(company: CompanyRow): boolean {
+  return company.health === 'ok' || company.health === 'degraded';
 }
 
 function smokeResult(
