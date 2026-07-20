@@ -38,7 +38,12 @@ test('scaffold templates validate and existing user files are preserved', () => 
   const service = new ConfigService(baseDirectory);
   assert.equal(service.loadApp().run.concurrency, 4);
   assert.deepEqual(service.loadCompanies().companies, []);
-  assert.equal(service.loadKeywords().title['software engineer'], 5);
+  const keywords = service.loadKeywords();
+  assert.equal(keywords.title['new grad'], 6);
+  assert.equal(keywords.title['software engineer'], 5);
+  assert.equal(keywords.description['machine learning'], 2);
+  assert.equal(keywords.negative['10+ years'], 10);
+  assert.equal(keywords.negative['phd required'], 6);
 
   const configPath = path.join(baseDirectory, 'config.yaml');
   const originalConfig = readFileSync(configPath, 'utf8');
