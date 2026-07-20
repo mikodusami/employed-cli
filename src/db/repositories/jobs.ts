@@ -9,15 +9,14 @@ export interface UpsertJobInput {
   title: string;
   location?: string | null;
   url: string;
+  department?: string | null;
   description?: string | null;
-  salary?: string | null;
-  posted_at?: string | null;
   first_seen: string;
   last_seen: string;
   dedupe_key: string;
   score?: number | null;
   band?: Band | null;
-  score_reason?: string | null;
+  matched_kw?: string | null;
 }
 
 interface JobIdentityParameter {
@@ -45,24 +44,21 @@ export class JobRepository {
     `);
     this.upsertStatement = database.prepare(`
       INSERT INTO jobs (
-        company_id, title, location, url, description, salary, posted_at,
-        first_seen, last_seen, dedupe_key, score, band, score_reason
+        company_id, title, location, url, department, description,
+        first_seen, last_seen, dedupe_key, score, band, matched_kw
       ) VALUES (
-        @company_id, @title, @location, @url, @description, @salary, @posted_at,
-        @first_seen, @last_seen, @dedupe_key, @score, @band, @score_reason
+        @company_id, @title, @location, @url, @department, @description,
+        @first_seen, @last_seen, @dedupe_key, @score, @band, @matched_kw
       )
       ON CONFLICT(company_id, dedupe_key) DO UPDATE SET
-        last_seen = excluded.last_seen,
-        updated_at = CURRENT_TIMESTAMP
+        last_seen = excluded.last_seen
       RETURNING *
     `);
     this.findNewSinceStatement = database.prepare(`
       SELECT * FROM jobs WHERE first_seen >= @date ORDER BY first_seen DESC, id DESC
     `);
     this.dismissStatement = database.prepare(`
-      UPDATE jobs
-      SET status = 'dismissed', updated_at = CURRENT_TIMESTAMP
-      WHERE id = @id
+      UPDATE jobs SET status = 'dismissed' WHERE id = @id
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM jobs WHERE id = @id');
   }
@@ -74,12 +70,11 @@ export class JobRepository {
     const parameters: UpsertJobInput = {
       ...input,
       location: input.location ?? null,
+      department: input.department ?? null,
       description: input.description ?? null,
-      salary: input.salary ?? null,
-      posted_at: input.posted_at ?? null,
       score: input.score ?? null,
       band: input.band ?? null,
-      score_reason: input.score_reason ?? null,
+      matched_kw: input.matched_kw ?? null,
     };
     const job = this.upsertStatement.get(parameters);
     if (!job) {
