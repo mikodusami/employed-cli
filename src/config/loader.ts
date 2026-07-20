@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { type ZodType, ZodError } from 'zod';
 
 import { EMPLOYED_DIR } from '../constants.js';
+import { ConfigError } from '../util/errors.js';
 import {
   AppConfigSchema,
   type AppConfig,
@@ -15,45 +16,44 @@ import {
   type KeywordsFile,
 } from './schema.js';
 
-/** A user-actionable configuration read or validation failure. */
-export class ConfigError extends Error {
-  public readonly filePath: string;
-
-  public constructor(filePath: string, details: string, options?: ErrorOptions) {
-    super(`Invalid configuration at ${filePath}:\n${details}`, options);
-    this.name = 'ConfigError';
-    this.filePath = filePath;
-  }
-}
-
 /** Loads each configuration file at most once per process. */
 export class ConfigService {
   private appConfig?: AppConfig;
-  private companiesFile?: CompaniesFile;
+  private readonly companiesFiles = new Map<string, CompaniesFile>();
   private keywordsFile?: KeywordsFile;
 
   public constructor(private readonly baseDirectory = EMPLOYED_DIR) {}
 
   /** Loads the main application configuration. */
   public loadApp(): AppConfig {
-    this.appConfig ??= this.load('config.yaml', AppConfigSchema);
+    this.appConfig ??= this.load(path.join(this.baseDirectory, 'config.yaml'), AppConfigSchema);
     return this.appConfig;
   }
 
   /** Loads the company watch list. */
-  public loadCompanies(): CompaniesFile {
-    this.companiesFile ??= this.load('companies.yaml', CompaniesFileSchema);
-    return this.companiesFile;
+  public loadCompanies(filePath?: string): CompaniesFile {
+    const resolvedPath = filePath
+      ? path.resolve(filePath)
+      : path.join(this.baseDirectory, 'companies.yaml');
+    const cachedFile = this.companiesFiles.get(resolvedPath);
+    if (cachedFile) {
+      return cachedFile;
+    }
+    const companies = this.load(resolvedPath, CompaniesFileSchema);
+    this.companiesFiles.set(resolvedPath, companies);
+    return companies;
   }
 
   /** Loads the keyword scoring profile. */
   public loadKeywords(): KeywordsFile {
-    this.keywordsFile ??= this.load('keywords.yaml', KeywordsFileSchema);
+    this.keywordsFile ??= this.load(
+      path.join(this.baseDirectory, 'keywords.yaml'),
+      KeywordsFileSchema,
+    );
     return this.keywordsFile;
   }
 
-  private load<Result>(fileName: string, schema: ZodType<Result>): Result {
-    const filePath = path.join(this.baseDirectory, fileName);
+  private load<Result>(filePath: string, schema: ZodType<Result>): Result {
     let source: string;
 
     try {
