@@ -29,7 +29,10 @@ const WorkdayEnvelopeSchema = z.object({
 export class WorkdayAdapter implements ScrapeSource {
   public readonly method = 'workday' as const;
 
-  public constructor(private readonly http: HttpClient) {}
+  public constructor(
+    private readonly http: HttpClient,
+    private readonly pageDelayMs = PAGE_DELAY_MS,
+  ) {}
 
   public async fetchPostings(company: CompanyRow): Promise<RawPosting[]> {
     if (!company.slug) {
@@ -62,7 +65,7 @@ export class WorkdayAdapter implements ScrapeSource {
         break;
       }
       // TODO(politeness-unit): move inter-request spacing into the shared HTTP decorator.
-      await delay(PAGE_DELAY_MS);
+      await delay(this.pageDelayMs);
     }
     return postings;
   }
