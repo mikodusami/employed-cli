@@ -9,8 +9,10 @@ import { register as registerInit } from './commands/init.js';
 import type { CommandContext } from './commands/types.js';
 import { VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
+import { SignatureDetector } from './scrape/detect.js';
 import { createUI } from './ui/index.js';
 import { AppError } from './util/errors.js';
+import { UndiciHttpClient } from './util/http.js';
 
 interface ProgramOptions {
   animation: boolean;
@@ -32,6 +34,7 @@ async function run(): Promise<void> {
     get repos() {
       return (repositories ??= new Repositories(getDatabase()));
     },
+    detector: new SignatureDetector(new UndiciHttpClient()),
   };
   const program = new Command()
     .name('employed')
