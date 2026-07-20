@@ -19,7 +19,10 @@ export class RobotsGate {
     const requestPath = `${parsed.pathname}${parsed.search}`;
     const matches = rules
       .filter((rule) => requestPath.startsWith(rule.path))
-      .sort((left, right) => right.path.length - left.path.length || Number(right.allow) - Number(left.allow));
+      .sort(
+        (left, right) =>
+          right.path.length - left.path.length || Number(right.allow) - Number(left.allow),
+      );
     return matches[0]?.allow ?? true;
   }
 
