@@ -102,7 +102,8 @@ export class ConfigService {
       if (permissions !== 0o600) {
         throw new ConfigError(
           filePath,
-          'email.smtp.password: config.yaml must use mode 600; run `chmod 600 ~/.employed/config.yaml`',
+          'email.smtp.password: config.yaml must use mode 600; ' +
+            'run `chmod 600 ~/.employed/config.yaml`',
         );
       }
     }
