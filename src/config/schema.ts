@@ -63,6 +63,7 @@ export const AppConfigSchema = z.object({
         .default({ min: 500, max: 1500 }),
       maxRetries: z.number().int().min(1).max(10).default(3),
       respectRobots: z.boolean().default(true),
+      autoGenerateOnAdd: z.boolean().default(true),
     })
     .default({
       time: '07:00',
@@ -70,6 +71,7 @@ export const AppConfigSchema = z.object({
       jitterMs: { min: 500, max: 1500 },
       maxRetries: 3,
       respectRobots: true,
+      autoGenerateOnAdd: true,
     }),
   email: z
     .object({
