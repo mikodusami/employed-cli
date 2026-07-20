@@ -30,7 +30,9 @@ const signatureRules: readonly SignatureRule[] = [
     urlPatterns: [/boards\.greenhouse\.io/i],
     htmlPatterns: [/boards\.greenhouse\.io/i, /grnhse/i],
     extractSlug: (url, html) =>
-      extractCapture(GREENHOUSE_URL, url, html) ?? extractCapture(GREENHOUSE_EMBED, html),
+      extractCapture(GREENHOUSE_URL, url) ??
+      extractCapture(GREENHOUSE_EMBED, html) ??
+      extractCapture(GREENHOUSE_URL, html),
   },
   {
     method: 'lever',
