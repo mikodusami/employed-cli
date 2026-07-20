@@ -33,3 +33,4 @@ export type {
   UpsertJobInput,
   UpsertJobResult,
 } from './jobs.js';
+export type { FinishRunInput } from './runs.js';

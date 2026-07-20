@@ -97,7 +97,7 @@ export class ScrapeService {
             insertedJobs.push(upsert.job);
           }
         }
-        this.repositories.companies.recordSuccess(company.id, postings.length);
+        this.repositories.companies.recordSuccess(company.id, postings.length, today);
         return insertedJobs;
       });
       return {

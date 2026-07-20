@@ -50,6 +50,10 @@ export class JobRepository {
   private readonly listOpenStatement: Database.Statement<[], JobRow>;
   private readonly listOpenFirstSeenOnStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly updateScoreStatement: Database.Statement<[JobScoreUpdate], Database.RunResult>;
+  private readonly markClosedIfUnseenStatement: Database.Statement<
+    [{ company_id: number; cutoff: string }],
+    Database.RunResult
+  >;
 
   public constructor(database: Database.Database) {
     this.existsStatement = database.prepare(`
@@ -89,6 +93,11 @@ export class JobRepository {
       UPDATE jobs
       SET score = @score, band = @band, matched_kw = @matched_kw
       WHERE id = @id
+    `);
+    this.markClosedIfUnseenStatement = database.prepare(`
+      UPDATE jobs
+      SET status = 'closed'
+      WHERE company_id = @company_id AND status = 'open' AND last_seen < @cutoff
     `);
   }
 
@@ -137,9 +146,16 @@ export class JobRepository {
     return job;
   }
 
-  /** Reserves the lifecycle boundary for the two-run closure rule. */
-  public markClosedIfUnseen(_companyId: number, _runDate: string): number {
-    return 0;
+  /**
+   * Closes open jobs whose `last_seen` predates a company's prior successful scrape.
+   *
+   * @remarks A job untouched since before that cutoff was already missing on the previous
+   * successful scrape (first miss, left open) and is still missing now (second consecutive
+   * miss), satisfying the two-run closure rule without a dedicated miss counter.
+   */
+  public markClosedIfUnseen(companyId: number, cutoff: string): number {
+    const result = this.markClosedIfUnseenStatement.run({ company_id: companyId, cutoff });
+    return result.changes;
   }
 
   /** Marks a job as intentionally dismissed and returns the updated record. */

@@ -32,7 +32,7 @@ export class CompanyRepository {
     Database.RunResult
   >;
   private readonly recordSuccessStatement: Database.Statement<
-    [{ id: number; yieldCount: number }],
+    [{ id: number; yieldCount: number; occurredAt: string }],
     Database.RunResult
   >;
   private readonly recordFailureStatement: Database.Statement<
@@ -71,7 +71,7 @@ export class CompanyRepository {
     this.recordSuccessStatement = database.prepare(`
       UPDATE companies
       SET health = 'ok',
-          last_success = CURRENT_TIMESTAMP,
+          last_success = @occurredAt,
           consecutive_failures = 0,
           last_yield = @yieldCount
       WHERE id = @id
@@ -123,9 +123,18 @@ export class CompanyRepository {
     return this.requireById(id);
   }
 
-  /** Records a successful scrape and resets its failure streak. */
-  public recordSuccess(id: number, yieldCount: number): CompanyRow {
-    this.recordSuccessStatement.run({ id, yieldCount });
+  /**
+   * Records a successful scrape and resets its failure streak.
+   *
+   * @remarks `occurredAt` defaults to an ISO timestamp rather than SQL `CURRENT_TIMESTAMP` so it
+   * shares a comparable format with `jobs.last_seen`, which the lifecycle sweep compares directly.
+   */
+  public recordSuccess(
+    id: number,
+    yieldCount: number,
+    occurredAt: string = new Date().toISOString(),
+  ): CompanyRow {
+    this.recordSuccessStatement.run({ id, yieldCount, occurredAt });
     return this.requireById(id);
   }
 
