@@ -184,7 +184,11 @@ export class ImportHqService {
   }
 
   private plan(backup: HqBackup, dryRun: boolean): ImportPlan {
-    const applications = backup.apps.map((application) => normalizeApplication(application));
+    const applications = uniqueBy(
+      backup.apps.map((application) => normalizeApplication(application)),
+      (application) =>
+        `${application.company.toLowerCase()}\0${application.role?.toLowerCase() ?? ''}`,
+    );
     const newApplications = applications.filter(
       (application) =>
         !this.dependencies.repositories.applications.findByCompanyRole(
@@ -192,7 +196,7 @@ export class ImportHqService {
           application.role,
         ),
     );
-    const seen = backup.seen.map(normalizeSeen);
+    const seen = uniqueBy(backup.seen.map(normalizeSeen), (item) => item.threadId);
     const newSeen = seen.filter(
       (item) => !this.dependencies.repositories.emailThreads.isSeen(item.threadId),
     );
@@ -338,4 +342,16 @@ function mergeKeywords(
 
 function statusEvent(status: AppStatus): EventType {
   return status === 'saved' ? 'note' : status;
+}
+
+function uniqueBy<Value>(values: readonly Value[], key: (value: Value) => string): Value[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const identity = key(value);
+    if (seen.has(identity)) {
+      return false;
+    }
+    seen.add(identity);
+    return true;
+  });
 }
