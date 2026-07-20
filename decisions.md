@@ -37,3 +37,17 @@ so informational commands do not create user data as a side effect.
 The referenced §6 schema was also absent. Migration 1 implements the seven named tables and every
 column implied by Layer 2, with `ai_cache` replacing `claude_cache` as directed. This inferred schema
 must be compared with §6 if that source is later supplied.
+
+## 2026-07-19T20:06:02-04:00 — Authoritative Layer 2 schema reconciliation
+
+The supplied §6, §7.1, and §7.2 sections supersede the inferred migration-1 schema and domain
+unions. Migration 1 now follows §6's columns verbatim except for the directed `claude_cache` to
+`ai_cache` rename, and the company/job repositories use those exact names. Scrape methods now cover
+all specified ATS and generated-scraper variants; health, application status, event type, and score
+band unions now match the source document.
+
+No version-2 compatibility migration is added because this is a correction to the not-yet-settled
+initial migration. A database created from the earlier inferred schema must be backed up and
+reinitialized. Fresh and idempotently reopened databases remain at `user_version = 1` as required.
+
+The attachment does not include §7.6, so the provisional keyword seed profile remains unchanged.
