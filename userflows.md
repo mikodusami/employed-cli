@@ -1035,3 +1035,119 @@ covers the "not configured" path without spending a real AI call).
    excluded (0 new among them), proving the ledger works against your real inbox too.
 8. Run `rm -rf "$EMPLOYED_DIR"`.
 9. Run `unset EMPLOYED_DIR`.
+
+# Layer 5, Unit 3 — CRM commands: `apply`, `board`, `app`, `note`, `move`, `dismiss`
+
+Unlike Units 1 and 2, every command here works fully offline with no AI or Gmail dependency — all
+flows below can be run exactly as written, no live network or MCP connection needed.
+
+### Flow 1: Discover the CRM commands
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed --help` and confirm `apply`, `board`, `app`, `note`, `move`, and `dismiss` all
+   appear in the command list.
+4. Run `employed move --help` and confirm its description lists the valid status values.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Promote a scraped job into a tracked application, idempotently
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation --tier A`.
+4. Run `employed scan --company "Highspot" --no-animation`.
+5. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id, title FROM jobs LIMIT 1;"` and note the id.
+6. Run `employed apply <jobId> --resume backend-v2 --no-animation` and confirm it reports the
+   application created with the job's company and title.
+7. Run the same `employed apply <jobId> --resume backend-v2 --no-animation` command again and
+   confirm it now reports "Already applied" with the same application id, rather than duplicating.
+8. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT COUNT(*) FROM applications;"` and confirm `1`.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: View the pipeline board, including the empty state and collapsed rejections
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed board --no-animation` and confirm it guides you toward `apply`/`sync` with no
+   applications yet.
+4. Add and scan Highspot as in Flow 2, then `employed apply <jobId> --no-animation`.
+5. Run `employed board --no-animation` and confirm the Applied column shows the new application
+   with company, role, an age of "just now", and its résumé (or `—` if none was given).
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id FROM applications LIMIT 1;"`, then
+   `employed move <appId> rejected --no-animation`.
+7. Run `employed board --no-animation` again and confirm the Rejected column shows a collapsed
+   count ("1 rejected — pass --all to show them") rather than the full row.
+8. Run `employed board --all --no-animation` and confirm the Rejected column now shows the full row.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Manual status transitions, including an unusual one
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add, scan, and apply to Highspot as in Flow 2; note the application id.
+4. Run `employed move <appId> interview --no-animation` and confirm success with no warning
+   (`applied → interview` is an expected transition).
+5. Run `employed move <appId> rejected --no-animation` to end the pipeline.
+6. Run `employed move <appId> oa --no-animation` and confirm it still succeeds, but now prints a
+   one-line "Unusual transition: rejected → oa" warning rather than refusing.
+7. Run `employed move <appId> not-a-real-status --no-animation` and confirm it fails with an error
+   naming the valid status values, and exits unsuccessfully.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: See the full event timeline, including notes
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add, scan, and apply to Highspot as in Flow 2; note the application id.
+4. Run `employed move <appId> interview --no-animation`.
+5. Run `employed note <appId> "Recruiter said they'd follow up next week." --no-animation`.
+6. Run `employed app <appId> --no-animation`.
+7. Confirm the header shows status `interview`, a résumé value, and non-empty Applied/First
+   response/Last activity fields.
+8. Confirm the event timeline lists exactly two events, oldest to newest: `applied` (blank note)
+   then `interview` (blank note) — then run the command again after adding the note in step 5 and
+   confirm a third `note` event appears last with your exact text.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Dismiss a job without touching its application
+
+Verify dismissal by job id via SQLite rather than by title text — a live careers board can list the
+same title twice under different postings (different location or dedupe key), so grepping report
+output for a title is not a reliable way to confirm one specific job was excluded.
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot as in Flow 2.
+4. Apply to one job (Flow 2) and move it to `interview` (Flow 4); note both the job id and the
+   application id.
+5. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT status FROM jobs WHERE id = <jobId>;"` and
+   confirm it reads `open`.
+6. Run `employed dismiss <jobId> --no-animation`.
+7. Run the same `sqlite3 ... SELECT status FROM jobs WHERE id = <jobId>;` query again and confirm
+   it now reads `dismissed`.
+8. Run `employed new --no-animation`, then
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT COUNT(*) FROM jobs WHERE id = <jobId> AND status = 'open';"`
+   and confirm `0`, proving that specific job is excluded from the open-jobs report query.
+9. Run `employed app <appId> --no-animation` and confirm the application is untouched — still
+   status `interview`, unaffected by the dismissal.
+10. Run `employed dismiss 999999 --no-animation` and confirm it reports the job does not exist
+    rather than crashing.
+11. Run `rm -rf "$EMPLOYED_DIR"`.
+12. Run `unset EMPLOYED_DIR`.
+
+### Flow 7: Verify the transition chokepoint and manual/Gmail-origin parity via the test suite
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Confirm `createManual produces a job-id-null application indistinguishable in listings` passes.
+4. Confirm `a sync-driven rejection matches a manual move-to-rejected event shape` passes — this is
+   the concrete proof that `SyncService` (Layer 5, Unit 2) now routes every write through the same
+   `ApplicationService.transition` chokepoint `move` uses, rather than writing directly.
+5. Confirm `an unusual transition warns but still succeeds` and `transition rejects an unknown
+   application id` both pass.
+6. Confirm `applications: touchActivity and setFirstResponse are separate, explicit writes` passes.

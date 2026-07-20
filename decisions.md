@@ -515,3 +515,53 @@ follows. The sync window is a fixed 2 days rather than a new config field: `run`
 2-day trailing window still covers a missed day without inventing config surface the spec didn't ask
 for. `buildDailyReport` gained an `autoApplied` override (mirroring the `runStats` override from Layer
 4 Unit 3) so `RunService` can hand it cron sync's results directly.
+
+## 2026-07-20T16:20:48-04:00 — Correction: sync events now match `move`'s shape, not `type: 'email'`
+
+Layer 5 Unit 2 tagged every sync-driven event `type: 'email'`, reasoning that provenance (auto vs.
+manual) belonged in the event's own type. This unit's explicit acceptance criterion — "verify a
+sync-driven rejection produces the same event shape as a manual `move ... rejected`" — says
+otherwise: both paths must produce the identical event type. That's now correct: `SyncService`
+routes every write through `ApplicationService.transition`/`createManual`, which tags the event with
+the target status itself (e.g. `type: 'rejected'`). Provenance instead lives entirely in the event's
+`note` ("Classified as rejected via email sync (thread t1)."), which a manual `move` simply leaves
+null. This is a superseding correction to the Unit 2 decision, not an addition — the old `type:
+'email'` behavior no longer exists anywhere in the codebase.
+
+## 2026-07-20T16:20:48-04:00 — `ApplicationRepository.updateStatus` now sets status only
+
+Previously `updateStatus` also stamped `last_activity_at` and conditionally `first_response_at` in
+one SQL statement. This unit's spec explicitly lists `touchActivity` and `setFirstResponse` as their
+own repository methods, so those side effects moved out of `updateStatus` and into
+`ApplicationService.transition`, which now calls all three explicitly in sequence. This is the
+concrete form of "one transition method, always": the repository layer no longer has an method that
+quietly does three things, and every status change's full side-effect set is visible in one place.
+
+## 2026-07-20T16:20:48-04:00 — `createFromJob`/`transition` return richer objects than the spec sketch
+
+The layer spec's TypeScript sketch shows `createFromJob(...): Promise<Application>` and
+`transition(...): Promise<Application>` — a bare application. But the spec's own prose requires
+callers to know things that shape can't carry: `apply` needs to distinguish "created new" from
+"already existed" for its idempotent messaging, and `move` needs to know whether a transition was
+unusual to print its one-line heads-up. Both methods return `{ application, created | warning }`
+instead. Read as a deliberate, documented deviation from the literal sketch to satisfy the prose's
+actual requirements — the same kind of sketch-vs-prose tension resolved similarly in Layers 5.1–5.2.
+
+## 2026-07-20T16:20:48-04:00 — Expected-transitions map is advisory; `saved` maps to a defensive fallback
+
+`EXPECTED_TRANSITIONS` encodes the ordinary happy-path graph (`applied → oa/interview/offer/rejected`,
+`interview → interview/offer/rejected`, etc.) purely to decide whether `transition` returns a
+`warning` string — it never blocks a transition outside the map, per the spec's explicit "permissive
+with a warning, not hard-blocking" instruction. Since `EventType` has no `saved` value (an application
+is never really "an event" of becoming saved), `statusToEventType` maps `to: 'saved'` to `'note'` as a
+defensive fallback; in practice no command in this unit ever transitions anything to `saved`, so this
+path is not expected to be exercised.
+
+## 2026-07-20T16:20:48-04:00 — `board`'s five columns literally exclude `saved`; age falls back to `created_at`
+
+The spec names exactly five board columns (Applied/OA/Interview/Offer/Rejected); `saved` is not one
+of them, and nothing in this unit's commands ever produces a `saved`-status application, so the
+omission is consistent rather than a gap. Per-card age is `last_activity_at` per the spec, but a
+freshly created application (via `apply` or `sync`) has no `last_activity_at` until its first
+transition — falling back to `created_at` in that case avoids a placeholder like "never" for an
+application that in fact just started.
