@@ -4,7 +4,7 @@ import Table from 'cli-table3';
 import ora, { type Ora } from 'ora';
 
 import { VERSION } from '../constants.js';
-import type { Health } from '../db/index.js';
+import type { Band, Health } from '../db/index.js';
 
 /** A progress indicator with animated and plain-text implementations. */
 export interface Spinner {
@@ -35,6 +35,17 @@ export function styleHealth(health: Health): string {
     untested: chalk.dim,
   };
   return styles[health](health);
+}
+
+/** Applies the shared terminal color associated with a score band. */
+export function styleBand(band: Band): string {
+  const styles: Readonly<Record<Band, (value: string) => string>> = {
+    A: chalk.green,
+    B: chalk.cyan,
+    C: chalk.yellow,
+    D: chalk.dim,
+  };
+  return styles[band](band);
 }
 
 class AnimatedSpinner implements Spinner {
@@ -92,12 +103,17 @@ class AnimatedUI implements UI {
 
   public table(headers: string[], rows: string[][]): void {
     const healthIndex = headers.findIndex((header) => header.toLowerCase() === 'health');
+    const bandIndex = headers.findIndex((header) => header.toLowerCase() === 'band');
     const table = new Table({ head: headers.map((header) => chalk.bold(header)) });
     for (const row of rows) {
       const styledRow = [...row];
       const health = styledRow[healthIndex];
       if (healthIndex >= 0 && isHealth(health)) {
         styledRow[healthIndex] = styleHealth(health);
+      }
+      const band = styledRow[bandIndex];
+      if (bandIndex >= 0 && isBand(band)) {
+        styledRow[bandIndex] = styleBand(band);
       }
       table.push(styledRow);
     }
@@ -180,6 +196,10 @@ class PlainUI implements UI {
 
 function isHealth(value: string | undefined): value is Health {
   return value === 'ok' || value === 'degraded' || value === 'broken' || value === 'untested';
+}
+
+function isBand(value: string | undefined): value is Band {
+  return value === 'A' || value === 'B' || value === 'C' || value === 'D';
 }
 
 /** Selects animated output only when explicitly allowed and safe for the terminal. */
