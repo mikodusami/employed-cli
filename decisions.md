@@ -90,3 +90,19 @@ valid siblings, instead of rejecting the whole YAML file before batch rules can 
 Command context exposes capabilities as `ui`, `config`, `db`, and `repos`; services are constructed
 inside commands rather than accumulated in context. Expected `AppError` subclasses render cleanly,
 while unexpected errors retain stack traces as development signals.
+
+## 2026-07-19T21:07:31-04:00 — Pure ATS matching with an injectable HTTP shell
+
+ATS detection is split between ordered, side-effect-free signature rules and an HTTP-backed
+`SignatureDetector`. All fetches use the `HttpClient` contract with a truthful user agent, redirect
+capture, a 15-second default timeout, and typed transport errors. Detection converts HTTP and network
+failures into diagnostic `unknown` data so company registration remains successful and health stays
+`untested` until a later adapter smoke test.
+
+The detector is a command-context capability constructed once by the CLI; company and import
+commands inject it into the unchanged `CompanyService`. Normal tests use saved signature fixtures and
+HTTP fakes. Current live checks are opt-in through `EMPLOYED_LIVE_ATS_TESTS=1`.
+
+Greenhouse matching accepts both the specification's `boards.greenhouse.io` host and the current
+`job-boards.greenhouse.io` host observed on Anthropic's live public board. This compatibility alias
+keeps historical embeds working while handling the provider's present hosted-domain convention.
