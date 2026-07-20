@@ -2,12 +2,24 @@
 import type { AiRunner } from '../ai/types.js';
 import type { AppConfig, KeywordsFile } from '../config/schema.js';
 import type { CompanyRow, Repositories, ScrapeMethod, Tier } from '../db/index.js';
+import { AiTailClassifier } from '../gmail/ai-classify.js';
+import { EmailFetcher } from '../gmail/fetch.js';
 import { buildDailyReport } from '../report/build.js';
-import type { RunStats } from '../report/model.js';
+import type { AutoAppliedUpdate, RunStats } from '../report/model.js';
 import { writeReport } from '../report/writer.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { HttpClient } from '../util/http.js';
 import { ScrapeRuntime } from './scrape-runtime.js';
+import type { ProposalPrompter } from './sync.js';
+import { SyncService } from './sync.js';
+
+/** Cron sync never prompts — nothing in `RunService` should ever call this. */
+const NEVER_PROMPTER: ProposalPrompter = {
+  selectProposals: () => Promise.resolve([]),
+};
+
+/** Kept short: `run` fires daily, so a small trailing window still covers any missed day. */
+const GMAIL_SYNC_DAYS = 2;
 
 /** One company's scrape failure surfaced through `runs.failures` and the report. */
 export interface RunFailure {
@@ -47,6 +59,8 @@ export interface RunServiceDependencies {
   now?: () => Date;
   /** Overrides the default `~/.employed/reports` destination; tests point this at a temp dir. */
   reportsDirectory?: string;
+  /** Overrides the constructed cron `SyncService`; tests inject a fake instead of real AI/Gmail. */
+  syncService?: SyncService;
 }
 
 /** Mutable counters threaded through the per-company loop. */
@@ -106,7 +120,7 @@ export class RunService {
         await this.scanOneCompany(runtime, repositories, company, accumulator);
       }
 
-      this.syncGmail();
+      const autoApplied = await this.syncGmail(repositories);
 
       brokenCount = countBroken(repositories);
       aiCalls = this.dependencies.ai?.callCount?.() ?? 0;
@@ -119,7 +133,12 @@ export class RunService {
         broken: brokenCount,
       };
       const date = startedAtDate.toISOString().slice(0, 10);
-      const report = buildDailyReport(date, { repositories, now: startedAtDate, runStats });
+      const report = buildDailyReport(date, {
+        repositories,
+        now: startedAtDate,
+        runStats,
+        autoApplied,
+      });
       reportPath = writeReport(report, this.dependencies.reportsDirectory);
     } finally {
       finishedAt = this.now().toISOString();
@@ -191,8 +210,34 @@ export class RunService {
     }
   }
 
-  /** Reserved call site for Layer 5's Gmail sync; intentionally a no-op until then. */
-  private syncGmail(): void {}
+  /**
+   * Runs cron-mode Gmail sync when AI is available, returning any auto-applied updates for the
+   * report. Any failure here (including Gmail MCP not yet being configured) degrades to a clean
+   * no-op rather than aborting the run — the same "one part's failure never aborts the run"
+   * discipline the scraping loop follows.
+   */
+  private async syncGmail(repositories: Repositories): Promise<readonly AutoAppliedUpdate[]> {
+    const ai = this.dependencies.ai;
+    if (!ai) {
+      return [];
+    }
+    try {
+      const sync =
+        this.dependencies.syncService ??
+        new SyncService(
+          repositories,
+          new EmailFetcher(ai),
+          new AiTailClassifier(ai),
+          ai,
+          NEVER_PROMPTER,
+          this.now,
+        );
+      const result = await sync.run('cron', { days: GMAIL_SYNC_DAYS });
+      return result.autoApplied;
+    } catch {
+      return [];
+    }
+  }
 }
 
 /** Pure tier-schedule filter — the one piece of new logic here, so it is tested in isolation. */
