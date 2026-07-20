@@ -79,3 +79,13 @@ if it already contains data you care about.
 1. Run `npm test`.
 2. Confirm all configuration and SQLite tests pass, including migration rollback, foreign-key
    enforcement, WAL mode, deduplication, memoization, and transaction rollback.
+
+### Flow 6: Reinitialize a pre-reconciliation development database
+
+This flow applies only if you ran Layer 2 before the authoritative §6 schema was supplied.
+
+1. Back up `~/.employed/employed.db` if it contains data you want to inspect later.
+2. Move the old database outside `~/.employed`.
+3. Run `employed init --no-animation`.
+4. Confirm a new database is created at schema version 1.
+5. Run `npm test` and confirm all eleven persistence and configuration checks pass.
