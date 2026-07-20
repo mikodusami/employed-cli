@@ -103,7 +103,12 @@ async function acquireNavigatedPages(
   const postings: RawPosting[] = [];
   let pageUrl = initialUrl;
   for (let pageNumber = 1; pageNumber <= config.pagination.maxPages; pageNumber += 1) {
-    await navigate(page, pageUrl, config.listSelector);
+    await navigate(page, pageUrl);
+    if (pageNumber === 1) {
+      await page.waitForSelector(config.listSelector);
+    } else if ((await page.locator(config.listSelector).count()) === 0) {
+      break;
+    }
     const pagePostings = extractPostings(load(await page.content()), config, page.url());
     if (pageNumber > 1 && pagePostings.length === 0) {
       break;
@@ -123,7 +128,8 @@ async function acquireExpandingPage(
   initialUrl: string,
   config: ScraperConfig,
 ): Promise<RawPosting[]> {
-  await navigate(page, initialUrl, config.listSelector);
+  await navigate(page, initialUrl);
+  await page.waitForSelector(config.listSelector);
   if (config.pagination.type === 'load-more-button') {
     const selector = config.pagination.value;
     if (!selector) {
@@ -153,9 +159,8 @@ async function acquireExpandingPage(
   return extractPostings(load(await page.content()), config, page.url());
 }
 
-async function navigate(page: Page, url: string, listSelector: string): Promise<void> {
+async function navigate(page: Page, url: string): Promise<void> {
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForSelector(listSelector);
 }
 
 async function browserNextPageUrl(
