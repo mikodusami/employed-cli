@@ -8,6 +8,7 @@ import { register as registerCompany } from './commands/company.js';
 import { register as registerDoctor } from './commands/doctor.js';
 import { register as registerImport } from './commands/import.js';
 import { register as registerInit } from './commands/init.js';
+import { register as registerNew } from './commands/new.js';
 import { register as registerRescore } from './commands/rescore.js';
 import { register as registerScan } from './commands/scan.js';
 import type { CommandContext } from './commands/types.js';
@@ -91,6 +92,7 @@ async function run(): Promise<void> {
   registerImport(program, context);
   registerScan(program, context);
   registerRescore(program, context);
+  registerNew(program, context);
   registerDoctor(program, context);
 
   try {
