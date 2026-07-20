@@ -1,10 +1,12 @@
 /** Generic executor for validated static scraper configurations. */
 import { load, type CheerioAPI } from 'cheerio';
 import type { AnyNode } from 'domhandler';
+import type { Page } from 'playwright';
 
 import type { CompanyRow } from '../db/index.js';
 import { AdapterError, RequiresRenderError } from '../util/errors.js';
 import type { HttpClient } from '../util/http.js';
+import { BrowserPool } from './browser.js';
 import { ScraperConfigSchema, type ScraperConfig } from './config.js';
 import type { RawPosting, ScrapeSource } from './types.js';
 
@@ -47,6 +49,29 @@ export class GeneratedSource implements ScrapeSource {
   }
 }
 
+/** Acquires browser-rendered DOM while reusing the static field-extraction path. */
+export class PlaywrightGeneratedSource implements ScrapeSource {
+  public readonly method = 'generated-playwright' as const;
+
+  public constructor(
+    private readonly browsers: BrowserPool,
+    private readonly suppliedConfig?: ScraperConfig,
+  ) {}
+
+  public async fetchPostings(company: CompanyRow): Promise<RawPosting[]> {
+    const config = this.suppliedConfig ?? parseStoredConfig(company);
+    return this.browsers.page(async (page) => {
+      if (
+        config.pagination.type === 'load-more-button' ||
+        config.pagination.type === 'infinite-scroll'
+      ) {
+        return acquireExpandingPage(page, company.careers_url, config);
+      }
+      return acquireNavigatedPages(page, company.careers_url, config);
+    });
+  }
+}
+
 function parseStoredConfig(company: CompanyRow): ScraperConfig {
   if (!company.scraper_config) {
     throw new AdapterError(`Company ${company.name} has no generated scraper configuration.`);
@@ -68,6 +93,103 @@ function requireStaticStrategy(config: ScraperConfig): void {
   ) {
     throw new RequiresRenderError('Generated scraper requires browser rendering.');
   }
+}
+
+async function acquireNavigatedPages(
+  page: Page,
+  initialUrl: string,
+  config: ScraperConfig,
+): Promise<RawPosting[]> {
+  const postings: RawPosting[] = [];
+  let pageUrl = initialUrl;
+  for (let pageNumber = 1; pageNumber <= config.pagination.maxPages; pageNumber += 1) {
+    await navigate(page, pageUrl, config.listSelector);
+    const pagePostings = extractPostings(load(await page.content()), config, page.url());
+    if (pageNumber > 1 && pagePostings.length === 0) {
+      break;
+    }
+    postings.push(...pagePostings);
+    const nextUrl = await browserNextPageUrl(page, config, pageNumber + 1);
+    if (!nextUrl) {
+      break;
+    }
+    pageUrl = nextUrl;
+  }
+  return postings;
+}
+
+async function acquireExpandingPage(
+  page: Page,
+  initialUrl: string,
+  config: ScraperConfig,
+): Promise<RawPosting[]> {
+  await navigate(page, initialUrl, config.listSelector);
+  if (config.pagination.type === 'load-more-button') {
+    const selector = config.pagination.value;
+    if (!selector) {
+      throw new AdapterError('load-more-button pagination requires a selector value.');
+    }
+    for (let round = 1; round < config.pagination.maxPages; round += 1) {
+      const button = page.locator(selector).first();
+      if ((await button.count()) === 0 || !(await button.isVisible())) {
+        break;
+      }
+      await button.click();
+      await page.waitForLoadState('networkidle');
+    }
+  } else {
+    let previousHeight = await documentHeight(page);
+    for (let round = 1; round < config.pagination.maxPages; round += 1) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(250);
+      await page.waitForLoadState('networkidle');
+      const nextHeight = await documentHeight(page);
+      if (nextHeight === previousHeight) {
+        break;
+      }
+      previousHeight = nextHeight;
+    }
+  }
+  return extractPostings(load(await page.content()), config, page.url());
+}
+
+async function navigate(page: Page, url: string, listSelector: string): Promise<void> {
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForSelector(listSelector);
+}
+
+async function browserNextPageUrl(
+  page: Page,
+  config: ScraperConfig,
+  nextPage: number,
+): Promise<string | null> {
+  switch (config.pagination.type) {
+    case 'none':
+      return null;
+    case 'next-link': {
+      const selector = config.pagination.value;
+      if (!selector) {
+        return null;
+      }
+      const link = page.locator(selector).first();
+      const href = (await link.count()) > 0 ? await link.getAttribute('href') : null;
+      return href ? new URL(href, page.url()).toString() : null;
+    }
+    case 'url-param': {
+      const template = config.pagination.value;
+      if (!template?.includes('{n}')) {
+        throw new AdapterError('url-param pagination value must contain {n}.');
+      }
+      return new URL(template.replaceAll('{n}', String(nextPage)), page.url()).toString();
+    }
+    case 'load-more-button':
+    case 'infinite-scroll':
+      return null;
+  }
+}
+
+async function documentHeight(page: Page): Promise<number> {
+  return page.evaluate(() => document.body.scrollHeight);
 }
 
 function extractPostings(
