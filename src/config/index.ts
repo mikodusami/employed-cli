@@ -7,6 +7,7 @@ export type {
   AiConfig,
   AppConfig,
   CompaniesFile,
+  EmailConfig,
   KeywordsFile,
   ProviderName,
   StatsConfig,
