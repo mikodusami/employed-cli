@@ -5,6 +5,7 @@ import test from 'node:test';
 import type { AiClassificationResult } from '../src/gmail/ai-classify.js';
 import type { EmailMeta } from '../src/gmail/types.js';
 import { createDb, Repositories } from '../src/db/index.js';
+import { ApplicationService } from '../src/services/application.js';
 import type {
   EmailFetcherLike,
   AiTailClassifierLike,
@@ -13,6 +14,8 @@ import type {
 } from '../src/services/sync.js';
 import { SyncService } from '../src/services/sync.js';
 import type { AiRunner, AiTask } from '../src/ai/types.js';
+
+const FIXED_CLOCK = () => new Date('2026-01-10T00:00:00.000Z');
 
 class FakeFetcher implements EmailFetcherLike {
   public calls = 0;
@@ -118,11 +121,12 @@ test('rules classify the confident majority; only low-confidence goes to the AI 
   ]);
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     tailClassifier,
     UNUSED_AI,
     new AcceptAllPrompter(),
-    () => new Date('2026-01-10T00:00:00.000Z'),
+    FIXED_CLOCK,
   );
 
   const result = await service.run('interactive', { days: 30 });
@@ -152,11 +156,12 @@ test('ledger idempotency: a second sync over the same inbox processes 0 new thre
   const fetcher = new FakeFetcher(emails);
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     new FakeTailClassifier([]),
     UNUSED_AI,
     new AcceptAllPrompter(),
-    () => new Date('2026-01-10T00:00:00.000Z'),
+    FIXED_CLOCK,
   );
 
   const first = await service.run('interactive', { days: 30 });
@@ -184,11 +189,12 @@ test('cron: high-confidence exact-match auto-applies; low-confidence defers', as
   ]);
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     tailClassifier,
     UNUSED_AI,
     new AcceptAllPrompter(), // never invoked in cron mode
-    () => new Date('2026-01-10T00:00:00.000Z'),
+    FIXED_CLOCK,
   );
 
   const result = await service.run('cron', { days: 30 });
@@ -223,11 +229,12 @@ test('interactive: accepting writes the CRM change; rejecting still ledgers it',
   // Only accept the rejection update; leave the (redundant) applied-confirmation proposal rejected.
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     new FakeTailClassifier([]),
     UNUSED_AI,
     new ScriptedPrompter(['rejected-1']),
-    () => new Date('2026-01-10T00:00:00.000Z'),
+    FIXED_CLOCK,
   );
 
   const result = await service.run('interactive', { days: 30 });
@@ -253,11 +260,12 @@ test('every CRM write from sync appends a corresponding events row', async () =>
   const fetcher = new FakeFetcher([highConfidenceApplied]);
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     new FakeTailClassifier([]),
     UNUSED_AI,
     new AcceptAllPrompter(),
-    () => new Date('2026-01-10T00:00:00.000Z'),
+    FIXED_CLOCK,
   );
 
   await service.run('interactive', { days: 30 });
@@ -267,7 +275,10 @@ test('every CRM write from sync appends a corresponding events row', async () =>
   const event = database
     .prepare('SELECT * FROM events WHERE application_id = ?')
     .get(acme.id) as { type: string; note: string } | undefined;
-  assert.equal(event?.type, 'email');
+  // A sync-driven event carries the same type as the status it produced (here 'applied'), not a
+  // generic 'email' tag — this is what lets a later `stats` feature event-scan without caring
+  // whether a status change came from sync or a manual `move`. Provenance lives in the note.
+  assert.equal(event?.type, 'applied');
   assert.match(event?.note ?? '', /applied-1/);
   database.close();
 });
@@ -287,6 +298,7 @@ test('ai === null: sync no-ops cleanly, nothing written, exit successful', async
   };
   const service = new SyncService(
     repositories,
+    new ApplicationService(repositories, FIXED_CLOCK),
     fetcher,
     tailClassifier,
     null,
@@ -299,5 +311,57 @@ test('ai === null: sync no-ops cleanly, nothing written, exit successful', async
   assert.equal(cronResult.skipped, true);
   assert.equal(interactiveResult.skipped, true);
   assert.equal(repositories.applications.findByCompanyRole('Acme', null), undefined);
+  database.close();
+});
+
+test('a sync-driven rejection matches a manual move-to-rejected event shape', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const applicationService = new ApplicationService(repositories, FIXED_CLOCK);
+
+  // Manual path: create, then `move ... rejected` via the same chokepoint the CLI uses.
+  const manualApp = await applicationService.createManual({ company: 'Manual Co' });
+  await applicationService.transition(manualApp.id, 'rejected');
+  const manualEvent = repositories.events
+    .listForApplication(manualApp.id)
+    .find((event) => event.type === 'rejected');
+
+  // Sync path: an existing application, rejected via a high-confidence cron proposal.
+  repositories.applications.create(
+    { company_name: 'Sync Co', status: 'applied' },
+    FIXED_CLOCK().toISOString(),
+  );
+  const fetcher = new FakeFetcher([
+    {
+      threadId: 'sync-rejected-1',
+      date: '2026-01-02T00:00:00.000Z',
+      sender: 'recruiting@synco.example.com',
+      subject: 'Update on your application to Sync Co',
+      snippet: 'We have decided to move forward with other candidates.',
+    },
+  ]);
+  const service = new SyncService(
+    repositories,
+    applicationService,
+    fetcher,
+    new FakeTailClassifier([]),
+    UNUSED_AI,
+    new AcceptAllPrompter(),
+    FIXED_CLOCK,
+  );
+  await service.run('cron', { days: 30 });
+  const syncApp = repositories.applications.findByCompanyRole('Sync Co', null);
+  assert.ok(syncApp);
+  const syncEvent = repositories.events
+    .listForApplication(syncApp.id)
+    .find((event) => event.type === 'rejected');
+
+  assert.ok(manualEvent);
+  assert.ok(syncEvent);
+  assert.equal(syncEvent.type, manualEvent.type);
+  assert.equal(syncEvent.application_id, syncApp.id);
+  // Both changed status to rejected identically; only the note differentiates provenance.
+  assert.equal(repositories.applications.findById(syncApp.id)?.status, 'rejected');
+  assert.equal(repositories.applications.findById(manualApp.id)?.status, 'rejected');
   database.close();
 });
