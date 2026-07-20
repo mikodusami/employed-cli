@@ -17,6 +17,7 @@ import { buildHttpClient, type HttpClient, RobotsGate } from './util/http.js';
 
 interface ProgramOptions {
   animation: boolean;
+  verbose: boolean;
 }
 
 /** Builds and executes the employed CLI. */
@@ -30,7 +31,13 @@ async function run(): Promise<void> {
   let detector: AtsDetector | undefined;
   const getDatabase = (): ReturnType<typeof createDb> => (database ??= createDb());
   const getHttp = (): HttpClient =>
-    (http ??= buildHttpClient({ db: getDatabase(), config: config.loadApp() }));
+    (http ??= buildHttpClient({
+      db: getDatabase(),
+      config: config.loadApp(),
+      onCacheHit: process.argv.includes('--verbose')
+        ? (url) => ui.info(`HTTP 304 cache hit: ${url}`)
+        : undefined,
+    }));
   const getDetector = (): AtsDetector =>
     (detector ??= new SignatureDetector(
       getHttp(),
@@ -57,7 +64,8 @@ async function run(): Promise<void> {
     .name('employed')
     .version(VERSION)
     .description('A personal job-search operation on autopilot.')
-    .option('--no-animation', 'disable animated terminal output');
+    .option('--no-animation', 'disable animated terminal output')
+    .option('--verbose', 'show HTTP cache diagnostics');
 
   registerInit(program, context);
   registerCompany(program, context);
