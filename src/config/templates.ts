@@ -33,25 +33,46 @@ companies: []
   #   url: https://example.org/jobs
 `;
 
-/** Starter keyword profile used to score job relevance. */
+/** Authoritative §7.6 keyword profile used to score job relevance. */
 export const KEYWORDS_TEMPLATE = `# Weighted phrases used by the scoring layer.
 title:
+  new grad: 6
   software engineer: 5
-  product engineer: 5
-  full stack: 4
+  entry level: 5
+  early career: 5
+  junior: 4
+  engineer i: 4
+  associate: 3
+  2026: 3
+  full stack: 3
   backend: 3
-  frontend: 3
+  product: 2
+  frontend: 2
 
 description:
+  python: 3
   typescript: 3
-  javascript: 2
-  node.js: 2
-  react: 2
-  distributed systems: 2
-  remote: 1
+  react: 3
+  java: 2
+  node: 2
+  aws: 2
+  api: 2
+  sql: 2
+  ai: 2
+  machine learning: 2
+  mentorship: 2
+  docker: 1
+  ci/cd: 1
 
 negative:
-  unpaid: -10
-  internship: -5
-  commission only: -10
+  10+ years: 10
+  unpaid: 10
+  senior: 8
+  staff: 8
+  principal: 8
+  director: 8
+  7+ years: 8
+  5+ years: 6
+  security clearance: 6
+  phd required: 6
 `;
