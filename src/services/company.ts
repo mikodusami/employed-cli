@@ -3,6 +3,7 @@ import type { CompaniesFile } from '../config/index.js';
 import type { CompanyRow, Repositories, Tier } from '../db/index.js';
 import type { AtsDetector, DetectionResult } from '../scrape/detect.js';
 import { ValidationError } from '../util/errors.js';
+import { ScrapeService, type SmokeResult } from './scrape.js';
 
 /** User input accepted when adding one company. */
 export interface AddCompanyInput {
@@ -16,6 +17,7 @@ export interface AddResult {
   outcome: 'created' | 'duplicate';
   company: CompanyRow;
   detection: DetectionResult | null;
+  smoke: SmokeResult | null;
 }
 
 /** One company that could not be imported. */
@@ -44,6 +46,7 @@ export class CompanyService {
   public constructor(
     private readonly repositories: Repositories,
     private readonly detector: AtsDetector,
+    private readonly scrapeService: ScrapeService,
   ) {}
 
   /** Validates, inserts, detects, and updates one company. */
@@ -55,7 +58,7 @@ export class CompanyService {
 
     const duplicate = this.repositories.companies.findByName(name);
     if (duplicate) {
-      return { outcome: 'duplicate', company: duplicate, detection: null };
+      return { outcome: 'duplicate', company: duplicate, detection: null, smoke: null };
     }
 
     const careersUrl = normalizeCareersUrl(input.url);
@@ -70,7 +73,9 @@ export class CompanyService {
       detection.method,
       detection.slug,
     );
-    return { outcome: 'created', company: updatedCompany, detection };
+    const smoke = await this.scrapeService.smokeTest(updatedCompany);
+    const finalCompany = this.repositories.companies.findByName(name) ?? updatedCompany;
+    return { outcome: 'created', company: finalCompany, detection, smoke };
   }
 
   /** Imports every valid entry while containing individual failures. */
