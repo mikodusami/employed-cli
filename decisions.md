@@ -212,3 +212,35 @@ later runs cacheable.
 Automatic generation after unknown-source detection defaults on through `run.autoGenerateOnAdd`.
 Explicit generation remains available, and disabled or runtime-unavailable AI returns a successful
 degraded outcome that leaves the company registered and unchanged.
+
+## 2026-07-20T04:58:22-04:00 — Run-scoped rendered scraping
+
+`ScrapeRuntime` owns one lazy `BrowserPool`, one heal budget, and the composed generation, scraping,
+and company services for a command or future scheduled run. The pool is a scrape-layer dependency,
+not command context state. It launches Chromium only on first rendered use, creates an isolated page
+per company, blocks images, fonts, and media, and closes borrowed pages in `finally`. Commands close
+the runtime in their own `finally`, including when detection, generation, or scraping throws.
+
+Static and Playwright strategies share the same Cheerio field extractor. Playwright differs only in
+DOM acquisition and interaction: navigation, next-page URLs, load-more clicks, and bounded infinite
+scroll. Empty rendered pagination pages terminate without waiting for a missing selector timeout.
+
+## 2026-07-20T04:58:22-04:00 — Rendered generation escalation
+
+Generation counts links carrying job-like URL or text signals rather than all navigation links.
+Fewer than three such links triggers a rendered recapture before distillation when Chromium is
+available. AI-requested Playwright strategies and static configs requiring browser interactions are
+executed through the same validation gate and persist as `generated-playwright` only after passing.
+
+## 2026-07-20T04:58:22-04:00 — Bounded self-healing policy
+
+`ScrapeService` is the single heal trigger. A previously working scraper's first consecutive empty
+or exceptional result records failure and degrades health without attempting repair. A later failure
+enters a run-scoped budget, defaults to two attempts per company and five globally, and retries the
+scrape exactly once after a successful repair. Heal exceptions are contained as result notes.
+
+ATS companies always re-run signature detection and smoke testing before generation, so migrations
+can heal without AI. Generated companies require generation; when AI is disabled or unavailable they
+remain degraded instead of crashing or being marked falsely repaired. Successful detection or
+generation sets health to ok and resets the failure streak; exhausted or failed repair is surfaced
+as deferred or broken with an explicit note.
