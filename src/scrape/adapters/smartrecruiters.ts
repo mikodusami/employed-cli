@@ -19,7 +19,8 @@ const SmartRecruitersEnvelopeSchema = z.object({
           .object({ city: z.string().nullish(), country: z.string().nullish() })
           .passthrough()
           .nullish(),
-        department: z.object({ label: z.string() }).passthrough().nullish(),
+        // Ubisoft2 returns department objects containing an id but no label.
+        department: z.object({ label: z.string().optional() }).passthrough().nullish(),
       })
       .passthrough(),
   ),
