@@ -646,3 +646,61 @@ keyword edits are reused by another flow.
    weight edit, leaves a dismissed job unchanged, and records zero HTTP calls.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
+
+## Layer 4, Unit 2 — Report writer and `employed new`
+
+Run `npm run build` first. Every flow below creates and removes its own Employed workspace; report
+files and scanned jobs are never reused between flows.
+
+### Flow 1: Generate an empty daily report
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed new --no-animation` and confirm it reports a manual run with no new jobs.
+4. Run `ls "$EMPLOYED_DIR/reports"` and confirm today's `YYYY-MM-DD.md` file exists.
+5. Open that file and confirm it contains the date, manual-run line, and `No new jobs.`, with no
+   empty Auto-applied or Needs Attention sections.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: See newly scanned jobs grouped and ranked
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add a currently available Tier-1 board, for example
+   `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation`.
+4. Run `employed scan --company "Highspot" --no-animation`.
+5. Run `employed new --today --no-animation`.
+6. Confirm only nonempty band headings appear in A-to-D order, jobs within each band descend by
+   score, and rows show company, title, location, and age. Jobs without descriptions show
+   `[title-only]`.
+7. Open today's file in `$EMPLOYED_DIR/reports` and confirm it contains the same groups, URLs, and
+   title-only markers as the terminal view.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Verify JSON and model-level band filtering
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan one Tier-1 company so the workspace contains today's scored jobs.
+4. Run `employed new --band A,B --json --no-animation > /tmp/employed-new.json`.
+5. Run `node -e 'JSON.parse(require("fs").readFileSync("/tmp/employed-new.json", "utf8"))'` and
+   confirm it exits successfully without removing a banner or log line first.
+6. Inspect the JSON and confirm `newJobsByBand.C` and `.D` are empty. Open today's Markdown report
+   and confirm it likewise contains no Band C or Band D section.
+7. Run `rm -f /tmp/employed-new.json`.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify same-day report overwrite is idempotent
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed new --no-animation`.
+4. Run `shasum "$EMPLOYED_DIR/reports/$(date +%F).md"` and save the checksum.
+5. Run `employed new --no-animation` again, then repeat the `shasum` command.
+6. Confirm the checksum is unchanged and the directory still contains one file for today rather
+   than a duplicate or appended report.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
