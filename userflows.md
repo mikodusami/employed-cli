@@ -144,3 +144,37 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 1. Run `npm test`.
 2. Confirm all 19 tests pass, including company add, duplicate, malformed URL, partial batch,
    custom config path, relative-time, and plain-table coverage.
+
+## Layer 3, Unit 1 — Real ATS signature detection
+
+### Flow 1: Detect Greenhouse from a live final URL
+
+1. Run `employed company add "Anthropic" --url https://job-boards.greenhouse.io/anthropic`.
+2. Confirm the success line reports `detected: greenhouse (slug: anthropic)`.
+3. Run `employed company list` and confirm health remains untested.
+
+### Flow 2: Detect additional live ATS providers
+
+1. Add Linear from `https://jobs.ashbyhq.com/linear`.
+2. Add Visa from `https://careers.smartrecruiters.com/Visa`.
+3. Confirm the commands report Ashby slug `linear` and SmartRecruiters slug `Visa`.
+
+### Flow 3: Preserve an unreachable company
+
+1. Run
+   `employed company add "Unreachable" --url https://not-a-real-host.invalid/careers`.
+2. Confirm the command exits successfully and reports `detected: unknown` with fetch-failure detail.
+3. Confirm the company list contains Unreachable with method unknown and health untested.
+
+### Flow 4: Run the network-free detector suite
+
+1. Run `npm test` with no live-test environment variable.
+2. Confirm the six ATS fixtures, redirect matching, custom page, HTTP policy, and detector failure
+   tests pass while the live smoke test is skipped.
+
+### Flow 5: Run the optional live smoke test
+
+1. Run `EMPLOYED_LIVE_ATS_TESTS=1 npm test` while connected to the internet.
+2. Confirm the public Greenhouse, Ashby, and SmartRecruiters cases pass.
+3. Treat future failures here as possible provider/site drift; the normal fixture suite must remain
+   deterministic and network-free.
