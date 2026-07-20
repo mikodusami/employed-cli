@@ -92,10 +92,30 @@ export const AppConfigSchema = z.object({
     })
     .default({ enabled: false }),
   ai: AiConfigSchema,
+  stats: z
+    .object({
+      /** Applications quiet at least this many days (and not offer/rejected) get a nudge. */
+      followUpDays: z.number().int().positive().default(7),
+      /** Applications quiet at least this many days are flagged stale instead of nudged. */
+      staleDays: z.number().int().positive().default(21),
+      /** A keyword needs at least this many linked applications before its rate is shown. */
+      minKeywordSample: z.number().int().min(1).default(2),
+      /** A résumé version needs at least this many applications before it's not low-signal. */
+      minResumeSample: z.number().int().min(1).default(3),
+    })
+    .default({
+      followUpDays: 7,
+      staleDays: 21,
+      minKeywordSample: 2,
+      minResumeSample: 3,
+    }),
 });
 
 /** Validated main application settings. */
 export type AppConfig = z.infer<typeof AppConfigSchema>;
+
+/** Validated `stats` thresholds. */
+export type StatsConfig = AppConfig['stats'];
 
 /** Company priority used by the editable watch list. */
 export const CompanyTierSchema = z.enum(['A', 'B', 'C']);

@@ -43,6 +43,13 @@ ai:
     codex:
       enabled: true           # requires Codex CLI installed (\`codex\` on PATH)
   maxCallsPerRun: 10          # hard budget per run across all AI tasks
+
+# Thresholds used by \`employed stats\` for follow-up nudges and low-sample flags.
+stats:
+  followUpDays: 7      # applications quiet this long (and still active) get a nudge
+  staleDays: 21        # applications quiet this long are flagged stale instead
+  minKeywordSample: 2  # a keyword needs at least this many linked applications to be shown
+  minResumeSample: 3   # a résumé version needs at least this many applications to not be low-signal
 `;
 
 /** Default company watch-list configuration with commented examples. */

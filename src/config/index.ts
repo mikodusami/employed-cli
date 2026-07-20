@@ -9,4 +9,5 @@ export type {
   CompaniesFile,
   KeywordsFile,
   ProviderName,
+  StatsConfig,
 } from './schema.js';

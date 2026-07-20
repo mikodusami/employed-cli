@@ -34,6 +34,12 @@ test('schemas populate every top-level configuration section from an empty mappi
       },
       maxCallsPerRun: 10,
     },
+    stats: {
+      followUpDays: 7,
+      staleDays: 21,
+      minKeywordSample: 2,
+      minResumeSample: 3,
+    },
   });
   assert.deepEqual(CompaniesFileSchema.parse({}), {
     defaults: { tier: 'B' },
