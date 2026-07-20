@@ -77,7 +77,7 @@ export class CompanyService {
       careers_url: careersUrl,
       tier: input.tier ?? 'B',
     });
-    const detection = await this.detector.detect(careersUrl);
+    const detection = await this.detector.detect(company);
     const updatedCompany = this.repositories.companies.updateMethod(
       company.id,
       detection.method,
