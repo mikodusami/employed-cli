@@ -1151,3 +1151,123 @@ output for a title is not a reliable way to confirm one specific job was exclude
 5. Confirm `an unusual transition warns but still succeeds` and `transition rejects an unknown
    application id` both pass.
 6. Confirm `applications: touchActivity and setFirstResponse are separate, explicit writes` passes.
+
+# Layer 6, Unit 1 — `employed stats`: analytics, sparkline, and nudges
+
+`stats` is fully offline and deterministic — every flow below runs with no AI or network dependency.
+
+### Flow 1: Discover the stats command
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed --help` and confirm `stats [options]` appears in the command list.
+4. Run `employed stats --help` and confirm `--json` is documented.
+5. Open `$EMPLOYED_DIR/config.yaml` and confirm it has a `stats:` section with `followUpDays`,
+   `staleDays`, `minKeywordSample`, and `minResumeSample`, each with an explanatory comment.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: See the empty state
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed stats --no-animation`.
+4. Confirm it prints an encouraging message pointing at `apply`/`sync` rather than a wall of zeros,
+   NaNs, or empty tables.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Build a small application history and verify the headline rates
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot (`employed company add "Highspot" --url https://jobs.lever.co/highspot
+   --no-animation --tier A` then `employed scan --company "Highspot" --no-animation`).
+4. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id FROM jobs ORDER BY id LIMIT 1 OFFSET 0;"`,
+   then again with `OFFSET 1` and `OFFSET 2`, to get three job ids.
+5. Run `employed apply <job1> --resume backend-v2 --no-animation`,
+   `employed apply <job2> --resume backend-v2 --no-animation`, and
+   `employed apply <job3> --resume generalist-v1 --no-animation`.
+6. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id FROM applications ORDER BY id LIMIT 1 OFFSET 0;"`
+   and again with `OFFSET 1` to get the first two application ids.
+7. Run `employed move <app1> interview --no-animation` and `employed move <app2> rejected
+   --no-animation`, leaving the third application untouched (still `applied`).
+8. Run `employed stats --no-animation`.
+9. Confirm it reads `3 applications`, `67% response rate` (2 of 3 ever got a response — interview
+   and rejection both count), `33% positive response rate` (only the interview is a positive
+   signal), and `33% interview rate`.
+10. Run `rm -rf "$EMPLOYED_DIR"`.
+11. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify the résumé cross-tab and low-signal flagging
+
+1. Repeat steps 1–8 of Flow 3 in a fresh workspace.
+2. Confirm the "Outcomes by résumé version" table shows `backend-v2` with 2 applications, 100%
+   response rate (both the interview and the rejection count as a response), 50% interview rate,
+   and `generalist-v1` with 1 application, 0%/0%.
+3. Confirm both rows show `low` in the Signal column — 1–2 applications is below the default
+   `minResumeSample: 3`.
+4. Add a fourth application using `backend-v2` again (apply to a 4th job with that résumé label)
+   and confirm `backend-v2` now shows `ok` once it reaches 3 applications.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Verify the keyword correlation floor
+
+1. Repeat steps 1–8 of Flow 3 in a fresh workspace.
+2. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT matched_kw FROM jobs;"` and note which keywords
+   appear on at least 2 of the three applied-to jobs.
+3. Run `employed stats --no-animation` and confirm the keyword correlation table lists exactly
+   those keywords (each with at least 2 applications) and omits any keyword that appears on only
+   one job, per the default `minKeywordSample: 2`.
+4. Confirm the table's heading notes the metric is "directional, not causal."
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Verify follow-up nudges and stale flags by age threshold
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot, then apply to two different jobs and note both application ids.
+4. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "UPDATE applications SET last_activity_at = datetime('now', '-10 days') WHERE id = <app1>;"`
+   to simulate 10 quiet days on the first application.
+5. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "UPDATE applications SET last_activity_at = datetime('now', '-30 days') WHERE id = <app2>;"`
+   to simulate 30 quiet days on the second.
+6. Run `employed stats --no-animation`.
+7. Confirm "Consider following up" lists application `<app1>` with a days-quiet value of 9 or 10
+   (rounded down from the sub-second gap between the SQL update and the stats command running —
+   both are ≥ the default 7-day `followUpDays` and under 21), and "Probably stale" lists `<app2>`
+   with a days-quiet value of 29 or 30 (≥ the default 21-day `staleDays`).
+8. Run `employed move <app1> rejected --no-animation`, then `employed stats --no-animation` again
+   and confirm `<app1>` no longer appears in either list — `rejected` is excluded regardless of age.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 7: Verify the `--json` round trip
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot, then apply to one job.
+4. Run `employed stats --json --no-animation > /tmp/employed-stats.json`.
+5. Run `node -e 'JSON.parse(require("fs").readFileSync("/tmp/employed-stats.json", "utf8"))'` and
+   confirm it exits successfully with no banner or log line mixed into the output.
+6. Inspect the JSON and confirm it has `totalApplications`, `responseRate`, `sparkline.chart`,
+   `outcomesByBand`, `outcomesByResume`, `keywordCorrelation`, `nudges`, and `stale` fields.
+7. Run `rm -f /tmp/employed-stats.json`.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 8: Verify event-scan discipline and the sparkline helper via the test suite
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Confirm `event-scan metrics, cross-tabs, and keyword correlation match hand-computed values`
+   passes — this is the proof that an application which reached `interview` and was *later*
+   rejected still counts toward the interview rate (an event-scan, not a current-status read).
+4. Confirm `an independent event-diff computation matches the first_response_at-based average`
+   passes.
+5. Confirm `a database with zero applications renders every rate as null, not NaN` passes.
+6. Confirm all four `sparkline` tests pass: 12-bucket scaling, the all-zero flat line, a single
+   spike, and the empty-series case.

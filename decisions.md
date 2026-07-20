@@ -565,3 +565,35 @@ omission is consistent rather than a gap. Per-card age is `last_activity_at` per
 freshly created application (via `apply` or `sync`) has no `last_activity_at` until its first
 transition — falling back to `created_at` in that case avoids a placeholder like "never" for an
 application that in fact just started.
+
+## 2026-07-20T16:37:57-04:00 — `stats` composes one wide query, not one query per metric
+
+`stats-queries.ts` exposes a single `listApplicationOutcomes`, joining every application against its
+linked job (band, `matched_kw`) and three `EXISTS` event-scan subqueries (`responded`,
+`positiveResponded`, `interviewed`) computed once per row. The spec's "each metric = one well-named
+query" is honored in spirit — every metric is a small, well-commented pure function over this one
+row set — rather than literally, because these particular metrics all read the same underlying
+per-application shape; running N separate queries against a local SQLite file would only add round
+trips without adding correctness or clarity. `positiveResponded` (an `oa`/`interview`/`offer` event,
+excluding a bare rejection) is a small addition beyond the spec's named metrics, direct from its own
+prose suggestion to "surface a positive response rate separately."
+
+## 2026-07-20T16:37:57-04:00 — Zero-data and small-sample handling lives in `rate()`, not special-cased
+
+Every rate in `StatsReport` is `number | null`, produced by one `rate(count, total)` helper that
+returns `null` when `total` is `0` — this is the only divide-by-zero guard needed anywhere in the
+service. Because every aggregation (band/résumé grouping, keyword counting, nudges) is written as a
+plain array reduction over whatever rows exist, an empty `rows` array already produces all-null
+rates, zero-length tables, and a flat sparkline with no special "is this empty?" branch in the
+service at all — the graceful zero-data behavior the acceptance criteria ask for falls out of the
+general case rather than being bolted on. The one true empty-state message ("no applications tracked
+yet") lives entirely in the terminal renderer, which is the correct layer for presentation-only
+text.
+
+## 2026-07-20T16:37:57-04:00 — Nudge/stale thresholds exclude only `offer`/`rejected`, matching the spec
+
+`saved`, `applied`, `oa`, and `interview` are all eligible for a follow-up nudge or a stale flag; only
+`offer` and `rejected` are excluded, exactly as the spec's prose states ("not rejected/offer") even
+though one could argue an accepted offer is equally "done." Quiet time is measured from
+`last_activity_at`, falling back to `created_at` for an application that was created but never
+transitioned — the same fallback `board` uses (Layer 5 Unit 3), applied consistently here too.
