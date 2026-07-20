@@ -1,3 +1,90 @@
+## Layer 5, Unit 1: Rule-Based Email Classifier + Company Extractor
+
+**What this is:** The pure-TypeScript core of Gmail sync (§7.7) — the ordered regex classifier and two-tier company extractor, ported _as-is_ from the validated prototype (11/11 classification, 9/9 extraction on the owner's real inbox). No Gmail, no AI, no network — this unit is just the deterministic brain that decides "what kind of email is this and who's it from," fed by fixtures. The AI-powered _retrieval_ and the ambiguous-tail fallback come next unit; this is the free, fast, known-good layer that handles the majority.
+
+The discipline: this is a **port, not a redesign**. The prototype's rules are proven against real data — the job is to move them into the architecture cleanly and lock them behind the fixture suite, not to "improve" them. Any change to a rule risks regressing a validated case.
+
+---
+
+**Deliverables:**
+
+**`src/gmail/types.ts` — the email domain shapes:**
+
+```typescript
+export interface EmailMeta {
+  // what the fetch layer (next unit) will provide
+  threadId: string;
+  date: string;
+  sender: string; // full "Name <addr@domain>" or bare address
+  subject: string;
+  snippet: string;
+}
+export type EmailClass =
+  | "applied"
+  | "oa"
+  | "interview"
+  | "offer"
+  | "rejected"
+  | "ignore";
+export interface Classification {
+  type: EmailClass;
+  company: string | null;
+  role: string | null;
+  confidence: "high" | "low"; // rule match = high; anything falling through = low (→ AI next unit)
+}
+```
+
+`EmailMeta` is defined here even though nothing produces it yet — it's the contract the fetch layer implements against, so the classifier is written and tested before the fetch exists (interface-first, same as the detector seam).
+
+**`src/gmail/classify.ts` — the ordered rule classifier (§7.7, ported verbatim):**
+
+The exact ordered pipeline from the prototype — order is load-bearing, document why each step precedes the next:
+
+1. **ignore** — surveys, job alerts, newsletters (filtered first so they never false-match downstream)
+2. **rejected** — tested _before_ confirmation, because rejections contain "thank you for your interest" which would otherwise match an `applied` pattern. This ordering is the single most important correctness detail in the whole classifier — comment it emphatically.
+3. **offer**
+4. **oa** — online assessment invites
+5. **interview** — interview/recruiter-call requests
+6. **applied** — application confirmations
+7. **unknown** → emitted as `type: 'ignore'`? No — falls through as a distinct low-confidence signal the next unit routes to AI. Represent fall-through as `confidence: 'low'` with a best-guess or null type, _not_ collapsed into `ignore` (an unclassified email is not the same as a deliberately-ignored one).
+
+Each stage is a named predicate over subject + snippet (+ sender where the prototype used it). Pure function `classify(email: EmailMeta): Classification`. Keep the regexes in a readable, commented table — these are the tuned, validated patterns; treat them as data.
+
+**`src/gmail/extract-company.ts` — the two-tier company extractor (ported):**
+
+The validated two-tier heuristic:
+
+- **Tier 1 — subject patterns first:** e.g. Ashby-style "no-reply@ashbyhq.com" whose _subject_ names the company (→ Whatnot).
+- **Tier 2 — sender-domain heuristics:** map ATS sender domains to the real company via the message, e.g. `redhat@myworkday.com` → Red Hat, `rb@myworkday.com` → Federal Reserve Bank of Atlanta.
+
+Ported with its exact validated mappings/logic. Pure function `extractCompany(email: EmailMeta): string | null`. Role extraction (`extractRole`) where the prototype did it. These are the 9/9-validated cases — the fixture suite pins every one.
+
+**`src/gmail/index.ts`:** public surface — `classify`, `extractCompany`, types.
+
+**`test/fixtures/gmail/` — the validated sample suite:**
+
+The 11 classification samples and 9 extraction samples from the prototype's real-inbox validation, as fixtures with expected outputs. This suite is the regression contract: it must go green and stay green. Include the specifically-cited tricky cases (Red Hat via Workday, Whatnot via Ashby subject, Federal Reserve Bank of Atlanta via Workday) as named tests — these are the ones that prove the two-tier extractor and the reject-before-confirm ordering actually work.
+
+**Architectural notes:**
+
+- **Port fidelity over cleverness.** If porting reveals a genuine bug, fix it _and add a fixture that locks the fix_ — but don't refactor validated regexes for elegance. The prototype earned these numbers against real email; the architecture's job is to preserve that, not second-guess it.
+- Classifier and extractor are **independent pure functions** — classification doesn't depend on company, extraction doesn't depend on type. The next unit composes them; keeping them separate means each is testable and reusable alone (e.g. `stats` might extract company from an email without classifying it).
+- `confidence` is the seam to the AI fallback: `high` = a rule fired and we trust it; `low` = fell through, needs the AI classifier next unit. Nothing in _this_ unit ever calls AI — it just labels what it couldn't confidently place.
+- No I/O anywhere. This entire unit's tests import no http, no AI, no DB — same purity bar as the scoring engine.
+
+**Acceptance criteria:**
+
+- The 11-sample classification fixture suite passes 11/11, including reject-before-confirm ordering proven by a rejection containing "thank you for your interest" classifying as `rejected`, not `applied`.
+- The 9-sample company-extraction suite passes 9/9, with the three named tricky cases (Red Hat, Whatnot, Federal Reserve Bank of Atlanta) as explicit assertions.
+- Fall-through email (matches no rule) → `confidence: 'low'`, not silently `ignore`.
+- ignore-first proven: a job-alert email that also contains interview-ish words classifies as `ignore`.
+- Classifier and extractor each tested in isolation with no cross-dependency.
+- Zero I/O imports in the unit and its tests.
+
+---
+
+Say **next** for Layer 5, Unit 2: Gmail sync via MCP — the EMAIL_FETCH/EMAIL_CLASSIFY templates, the `email_threads` idempotency ledger, and the interactive-vs-cron sync modes.
+
 ## Layer 4, Unit 3: `employed run` Orchestration + Scheduler (§9)
 
 **What this is:** The keystone that ties Layers 1–4 into one command. `employed run` is the single idempotent entry point the scheduler fires every morning: scrape all companies (tier-aware, polite, self-healing) → score → write the report → optionally email. Plus the OS-level scheduler installer. This is the "jobs come to me at 7am" payoff. The discipline: `run` is _pure orchestration_ — it calls services built in prior units and owns run-scoped state (budgets, the observability row); it contains no scraping, scoring, or reporting logic of its own.
