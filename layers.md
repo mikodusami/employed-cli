@@ -1,3 +1,66 @@
+## Layer 4, Unit 1: Scoring Engine (§7.6)
+
+**What this is:** The pure-TypeScript scoring core — identical math to the validated prototype, no AI, so 500 jobs score in milliseconds. This is the simplest unit in the whole build (it's a weighted substring counter) but it's load-bearing: it's what turns a pile of scraped postings into a _ranked_ morning report. The discipline here is keeping it pure and keeping `matched_kw` populated for the analytics that come in Layer 6.
+
+---
+
+**Deliverables:**
+
+**`src/score/engine.ts` — the pure engine:**
+
+```typescript
+export interface ScoreResult {
+  score: number;
+  band: Band; // 'A' | 'B' | 'C' | 'D'
+  matchedKeywords: string[]; // every keyword that fired, across all three lists
+  titleOnly: boolean; // true when description was absent (§7.6 flag)
+}
+export function scoreJob(
+  job: { title: string; description?: string | null },
+  keywords: KeywordsFile,
+): ScoreResult;
+```
+
+The math, verbatim from §7.6:
+
+- `score = 2·Σ(title hits) + Σ(desc hits) − 2·Σ(neg hits)`
+- title keyword weights count ×2, desc weights ×1, negative weights ×−2 — but note the _weights themselves_ live in `keywords.yaml`; the ×2/×1/×−2 are the list multipliers applied on top of each keyword's configured weight. Re-read the seed profile carefully: `new grad 6` in the title list contributes `2 × 6 = 12` when "new grad" appears in the title. Encode this as: for each list, `listMultiplier × Σ(keywordWeight for each matched keyword)`.
+- Matching: **case-insensitive substring** over the relevant text. Title keywords match against title only; desc keywords match against description only; negative keywords match against **title + description combined** (a "senior" in either place should penalize).
+- Bands: `A ≥ 30, B ≥ 18, C ≥ 8, D < 8`. Put thresholds in exported constants (`BAND_THRESHOLDS`) — the report groups by these, `stats` references them, one source of truth.
+- `titleOnly: true` when `description` is null/empty (Tier-2/3 and some ATS list endpoints) — the job still scores on title, but the report flags it so a low score on a title-only job reads as "unknown," not "bad fit."
+
+Purity is the rule: no DB, no I/O, no clock. `(job, keywords) → result`. This makes it exhaustively testable and reusable (the future `score --ai` note, re-scoring after a keyword edit, etc.).
+
+**`src/score/index.ts`:** public surface — `scoreJob`, `ScoreResult`, `BAND_THRESHOLDS`.
+
+**Wiring into the pipeline (`ScrapeService`):**
+
+After normalization, before/within the upsert transaction: score each new-or-updated job, and persist `score`, `band`, `matched_kw` (JSON array) to the `jobs` row. `JobRepository.upsert` gains score fields in its insert/update — but the _computation_ stays in `ScrapeService` calling the pure engine (repository stores, engine computes, service orchestrates — the same three-way boundary as everywhere else). `ScrapeService` gets the loaded `KeywordsFile` via constructor (from `ConfigService`) — injected, so a test scores against a fixture keyword profile.
+
+**Re-scoring path:** because keyword weights are tuned over time, add `employed rescore` (small command): re-run `scoreJob` over all `open` jobs with the current `keywords.yaml` and update their scores/bands. Pure engine + a bulk update — no scraping, no network. This is why scoring is decoupled from scraping: editing a weight shouldn't require re-scraping every company. `JobRepository.listOpen()` + a batched `updateScore(id, ...)` in a transaction.
+
+**Command surface touch:** `employed scan --company X` output (from Layer 3) now shows band + score per new job in its table — the scoring is visible immediately. Column order: Score, Band, Title, Location — ranked desc by score.
+
+**Architectural notes:**
+
+- Negative-keyword matching over combined text is a deliberate spec reading — document it in a comment so a future reader doesn't "fix" it to title-only.
+- `matched_kw` is stored even though nothing reads it until Layer 6's keyword→response correlation. Storing signal you'll need later is cheap; backfilling it isn't. Don't defer the write.
+- The list multipliers (2/1/−2) are structural and belong in `engine.ts` as named constants (`TITLE_MULTIPLIER` etc.), _not_ in config — they're the scoring model's shape, not a user knob. Only the per-keyword weights are user-tunable. Keep this line crisp: change a weight → edit yaml; change the model → edit code (and bump a version).
+
+**Acceptance criteria:**
+
+- Engine unit tests reproduce the §7.6 math exactly on a fixture set: a job titled "New Grad Software Engineer 2026" with a matching description lands in band A with the correct integer score; a "Senior Staff Engineer" title scores negative; a title-only job scores on title alone with `titleOnly: true`.
+- Every band boundary tested (score exactly 30→A, 29→B, 18→B, 17→C, 8→C, 7→D).
+- Case-insensitivity proven ("SOFTWARE ENGINEER" == "software engineer"); substring proven ("backend" matches "Backend Engineer").
+- `matched_kw` contains exactly the keywords that fired, no duplicates, across all three lists.
+- Pipeline: `scan` persists score/band/matched_kw; re-scanning an unchanged job keeps them consistent.
+- `employed rescore` after editing a weight in `keywords.yaml` updates existing jobs' scores without any network call (assert zero HTTP via fake client).
+- Engine is pure: its test file imports no DB, no http, no fs.
+
+---
+
+Say **next** for Layer 4, Unit 2: the report writer + `employed new` — the dated markdown report, band grouping, and `--json` output.
+
 ## Layer 3, Unit 7: Playwright Strategy + Self-Healing Loop
 
 **What this is:** The two pieces that make the scraper fleet client-side-render-capable _and_ self-maintaining (§7.4). Playwright handles the pages static fetch can't; self-healing is the loop that regenerates rotted configs automatically, with Claude/Codex as the repair crew and the owner paged only when the AI is stumped. This closes out Layer 3 — after this, the scraping subsystem is feature-complete and maintains itself.
