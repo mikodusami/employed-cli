@@ -143,7 +143,11 @@ async function executeAndValidate(
     };
   } catch (error: unknown) {
     if (error instanceof RequiresRenderError) {
-      return { verdict: { ok: false, reasons: [error.message] }, jobCount: 0, requiresRender: true };
+      return {
+        verdict: { ok: false, reasons: [error.message] },
+        jobCount: 0,
+        requiresRender: true,
+      };
     }
     const reason = error instanceof Error ? error.message : String(error);
     return {
