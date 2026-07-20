@@ -1,8 +1,10 @@
 /** Owns all terminal presentation and selects an output mode for the environment. */
 import chalk from 'chalk';
+import Table from 'cli-table3';
 import ora, { type Ora } from 'ora';
 
 import { VERSION } from '../constants.js';
+import type { Health } from '../db/index.js';
 
 /** A progress indicator with animated and plain-text implementations. */
 export interface Spinner {
@@ -21,6 +23,18 @@ export interface UI {
   info(message: string): void;
   heading(message: string): void;
   banner(): void;
+  table(headers: string[], rows: string[][]): void;
+}
+
+/** Applies the shared terminal color associated with a scraper health state. */
+export function styleHealth(health: Health): string {
+  const styles: Readonly<Record<Health, (value: string) => string>> = {
+    ok: chalk.green,
+    degraded: chalk.yellow,
+    broken: chalk.red,
+    untested: chalk.dim,
+  };
+  return styles[health](health);
 }
 
 class AnimatedSpinner implements Spinner {
@@ -74,6 +88,20 @@ class AnimatedUI implements UI {
 
   public banner(): void {
     console.log(chalk.bold.cyan(`employed v${VERSION}`));
+  }
+
+  public table(headers: string[], rows: string[][]): void {
+    const healthIndex = headers.findIndex((header) => header.toLowerCase() === 'health');
+    const table = new Table({ head: headers.map((header) => chalk.bold(header)) });
+    for (const row of rows) {
+      const styledRow = [...row];
+      const health = styledRow[healthIndex];
+      if (healthIndex >= 0 && isHealth(health)) {
+        styledRow[healthIndex] = styleHealth(health);
+      }
+      table.push(styledRow);
+    }
+    console.log(table.toString());
   }
 }
 
@@ -135,6 +163,23 @@ class PlainUI implements UI {
   public banner(): void {
     console.log(`employed v${VERSION}`);
   }
+
+  public table(headers: string[], rows: string[][]): void {
+    const widths = headers.map((header, index) =>
+      Math.max(header.length, ...rows.map((row) => (row[index] ?? '').length)),
+    );
+    const formatRow = (row: readonly string[]): string =>
+      row.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join('  ');
+    console.log(formatRow(headers));
+    console.log(formatRow(widths.map((width) => '-'.repeat(width))));
+    for (const row of rows) {
+      console.log(formatRow(row));
+    }
+  }
+}
+
+function isHealth(value: string | undefined): value is Health {
+  return value === 'ok' || value === 'degraded' || value === 'broken' || value === 'untested';
 }
 
 /** Selects animated output only when explicitly allowed and safe for the terminal. */
