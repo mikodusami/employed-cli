@@ -180,3 +180,35 @@ successfully. AI disabled in configuration produces a nullable runner and an exp
 The documented isolated-flow protocol exposed that `EMPLOYED_DIR` was previously a documentation-
 only convention. Path constants now honor a non-empty environment override before deriving all
 workspace paths, ensuring temporary user-flow workspaces are genuinely isolated from `~/.employed`.
+
+## 2026-07-20T04:37:21-04:00 — Generated scraper trust boundary
+
+`ScraperConfigSchema` is the single runtime and type definition shared by generation, persistence,
+and execution. Generated configurations remain data: one generic static executor owns selectors,
+field extraction, URL resolution, and bounded pagination. A configuration is persisted as
+`generated-static` only after it executes and passes every validation-gate criterion. Two failed
+extractions mark health broken while preserving the previous method and config.
+
+Configurations requiring browser interactions are stored as `generated-playwright` intent with
+their confidence and notes intact, then reported as pending instead of being misrepresented as a
+working static scraper. Unit 7 will own their execution.
+
+## 2026-07-20T04:37:21-04:00 — Stable DOM generation input
+
+The deterministic Cheerio distiller removes executable and visual-only nodes, comments, and all
+attributes except selector-relevant identity, link, ARIA, and data attributes. Its output is capped
+at 35 KiB around a repeated-link subtree; singleton links are excluded from focus selection to avoid
+centering prompts on navigation. The distilled bytes—not the original response—form the first-attempt
+AI cache digest.
+
+## 2026-07-20T04:37:21-04:00 — Separate structural and domain retries
+
+The AI runner's one correction retry remains limited to malformed or schema-invalid JSON. Scraper
+generation independently permits one retry when valid configuration data executes poorly. That
+second task incorporates validation reasons in both its prompt and a feedback-scoped digest, which
+prevents the first valid-but-bad cached configuration from defeating the domain retry while keeping
+later runs cacheable.
+
+Automatic generation after unknown-source detection defaults on through `run.autoGenerateOnAdd`.
+Explicit generation remains available, and disabled or runtime-unavailable AI returns a successful
+degraded outcome that leaves the company registered and unchanged.
