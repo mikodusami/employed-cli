@@ -1,3 +1,64 @@
+## Layer 6, Unit 1: `employed stats` (§7.8) — Analytics, Sparkline, Nudges
+
+**What this is:** The "what is actually working" command — every metric computed straight from SQL over the applications and events the CRM and sync have been accumulating. This is where the append-only event log (Unit 3's discipline) pays off: interview rate is an _event-scan_, not a current-status count, so a candidate who reached "interview" then got rejected still counts as having interviewed. Pure computation over stored data, zero AI, zero network.
+
+The discipline: **analytics read the event log, not just current status.** Current status is a lossy projection (it only shows where things _ended up_); the event history shows everything that _happened_. Any metric that only looks at `applications.status` will undercount. Compute from events wherever the metric is about "did X ever occur."
+
+---
+
+**Deliverables:**
+
+**`src/services/stats.ts` — `StatsService.compute(now): StatsReport`:**
+
+A pure assembler over the repositories, returning a fully-structured `StatsReport` (data model, like the daily report — so it renders to terminal now and JSON/other later). Each metric, per §7.8:
+
+- **Response rate** — applications with any post-`applied` event (`oa`|`interview`|`offer`|`rejected`) ÷ total applications. Event-scan: an application that got a rejection _responded_, even though "rejected" feels negative — a response is any signal back. (Consider surfacing "positive response rate" separately: responses excluding rejection ÷ total — arguably the more useful number. Compute both, label clearly.)
+- **Interview rate** — applications with an `interview` event ever ÷ total. Event-scan, explicitly — not `status = 'interview'` (which would miss everyone who advanced past or got rejected after interviewing).
+- **Avg days-to-first-response** — mean of `first_response_at − applied_at` across applications that got a response. (The `first_response_at` field, set by `transition` in Unit 3, makes this a direct read rather than an event-diff — the earlier discipline paying off.)
+- **Apps per week** — 12-week bucketed counts, rendered as a **sparkline** (unicode block chars `▁▂▃▄▅▆▇█` scaled to the max bucket — a tiny pure helper in `src/util/sparkline.ts`). Shows application cadence at a glance.
+- **Outcomes by score band** — for applications linked to scraped jobs (which carry a band), cross-tabulate band × outcome. Answers "are my A-band applications actually converting better?" — validates the scoring model itself. Applications with no linked job (manual/Gmail) are excluded from this table with a footnote count.
+- **Outcomes by résumé version** — group by `resume_version`, show response/interview rate per label. Answers "is backend-v2 outperforming generalist-v1?" Min-sample guard: label groups with <N apps flagged as low-signal, not hidden.
+- **Keyword → response correlation** — join `jobs.matched_kw` (the array stored since Layer 4 Unit 1) against application outcomes: for each keyword, response rate among applications to jobs where it fired. **Min 2 apps per keyword** (§7.8) or it's noise — enforce the floor. This is the highest-value, most-speculative metric: it hints at which signals in a posting predict a response. Label it as directional, not causal.
+- **Follow-up nudges** — applications quiet ≥ `followUpDays` (config, default e.g. 7) since `last_activity_at`, still in an active status (not rejected/offer) — surfaced as "consider following up."
+- **Stale flags** — applications quiet ≥ `staleDays` (config, larger, e.g. 21) — "probably dead, consider closing."
+
+**`src/services/stats-queries.ts` — the SQL layer:**
+
+Keep the actual queries in dedicated, named, commented functions on the repositories (or a stats-query module) — not inline strings in the service. Each metric = one well-named query returning typed rows; the service composes them into the report. This keeps SQL testable in isolation and the service readable as "here are the metrics," not a wall of SQL. Event-scan metrics use `EXISTS (SELECT 1 FROM events WHERE ... type = ...)` subqueries — correct and index-friendly.
+
+**`src/report/render/stats-terminal.ts`:**
+
+Renders `StatsReport` to the terminal via the UI abstraction: headline rates up top, the sparkline, then the cross-tab tables (band×outcome, résumé×outcome, keyword correlation), then the nudges and stale lists as actionable sections. Color: good rates green, concerning stale counts amber. Plain fallback automatic.
+
+**`src/commands/stats.ts` — `employed stats [--json]`:**
+
+Build → render. `--json` emits the `StatsReport` (same data-model-is-source-of-truth pattern — feeds the HQ dashboard, §15). Empty-data grace: with zero applications, render an encouraging "no applications tracked yet — `apply` or `sync` to start" rather than a wall of zeros and NaNs. Guard every division against zero explicitly (no `0/0` rendering as `NaN%`).
+
+**Config additions (additive):** `stats.followUpDays: 7`, `stats.staleDays: 21`, `stats.minKeywordSample: 2`, `stats.minResumeSample: 3`.
+
+**Architectural notes:**
+
+- **Event-scan over status-count** is the correctness spine of this unit. Write a comment on each event-scan metric explaining _why_ it's not a status count, so a future reader doesn't "simplify" it into a bug.
+- Divide-by-zero and small-sample handling isn't polish — it's correctness. A response rate of "3 interviews from 4 apps = 75%" is meaningless signal; the min-sample floors and low-signal flags keep `stats` from lying with confidence. Enforce them in the _service_, so every renderer inherits the honesty.
+- `stats` is **read-only** — it computes and displays, never writes. No status inference, no auto-nudging-by-email here (that could be a future extension); it surfaces what's true and lets you act.
+- Reuse: `StatsReport` is a data model like `DailyReport` — same three-renderer discipline available if email/HTML views are wanted later. Build the model cleanly; don't couple it to the terminal.
+
+**Acceptance criteria:**
+
+- Seeded `:memory:` DB with a known application/event history: response rate, interview rate, and avg-days-to-response match hand-computed expected values — including a case where an app reached interview _then_ rejected still counts toward interview rate (event-scan proven).
+- `first_response_at`-based avg matches an independent event-diff computation.
+- Sparkline helper: 12 buckets scale correctly to block chars; all-zero input renders flat, single-spike renders correctly.
+- Band×outcome and résumé×outcome cross-tabs are correct; manual (job-less) applications excluded from band table with the right footnote count; low-sample résumé groups flagged.
+- Keyword correlation respects the min-2-apps floor (a keyword with 1 app doesn't appear); computed off `matched_kw`.
+- Nudge/stale lists select the right applications by age thresholds and exclude terminal statuses.
+- Zero-data and small-sample cases render gracefully — no NaN, no divide-by-zero, encouraging empty state.
+- `--json` round-trips to `StatsReport`.
+- Suite offline; `stats` issues zero HTTP/AI calls (assert).
+
+---
+
+Say **next** for Layer 6, Unit 2: email digest delivery (SMTP) + completing `employed doctor` (the fleet-health section).
+
 ## Layer 5, Unit 3: CRM Commands — `apply`, `board`, `app`, `note`, `move`, `dismiss`
 
 **What this is:** The human-facing application tracker (§7.8's CRM half). Sync (Unit 2) already writes applications and events automatically; this unit gives _you_ direct control — promoting scraped jobs into applications, viewing the pipeline as a board, and managing status by hand. It completes the application/event repositories (sync built only the slices it needed) and establishes the status-transition rules in one place. Analytics (`stats`) is the next layer — this is the data-management surface it will read from.
