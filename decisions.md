@@ -269,3 +269,24 @@ profile from `ConfigService`; direct low-level tests may use an empty profile.
 It receives no HTTP or scraper dependency, making a weight edit independently applicable without a
 network request. Interactive scan output ranks newly inserted jobs by descending score and presents
 Score, Band, Title, and Location in that order.
+
+## 2026-07-20T05:35:23-04:00 — Report projection and presentation boundary
+
+The database remains the report source of truth. `buildDailyReport` projects repository rows into
+one serializable `DailyReport`; Markdown, terminal, and JSON consume that model without querying the
+database. The assembler receives both report date and current time, keeping ordering, age
+calculation, and rendered output reproducible. The dated Markdown file is overwritten as an export,
+never read back or incrementally mutated.
+
+The report model reserves summary, run, auto-application, and attention slots now so later units can
+populate them without changing renderer contracts. Until orchestration records healed counts, that
+field is explicitly zero; absent runs remain null and render as a manual report. Broken companies
+already populate attention, while title-only state remains derived from the stored description.
+
+## 2026-07-20T05:35:23-04:00 — Daily report command contract
+
+`employed new` defaults to the current UTC date, with `--today` documenting that current contract and
+leaving room for a future rolling-window option. Band selection filters the report model before every
+presentation, so terminal, JSON, and the written Markdown export cannot disagree. JSON mode uses the
+UI's raw-output boundary and emits exactly one serialized model with no banners or status messages;
+its shape is treated as a semi-public dashboard contract.
