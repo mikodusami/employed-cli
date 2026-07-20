@@ -1,15 +1,18 @@
 /** Orchestrates distillation, AI generation, execution, validation, retry, and persistence. */
 import { createHash } from 'node:crypto';
 
+import { load } from 'cheerio';
 import { z } from 'zod';
+import type { Page } from 'playwright';
 
 import { AiUnavailableError } from '../ai/errors.js';
 import { renderTemplate } from '../ai/templates.js';
 import type { AiRunner } from '../ai/types.js';
 import type { CompanyRow, Repositories } from '../db/index.js';
+import { BrowserPool } from '../scrape/browser.js';
 import { ScraperConfigSchema, type ScraperConfig } from '../scrape/config.js';
 import { distillDom } from '../scrape/distill.js';
-import { GeneratedSource } from '../scrape/generated.js';
+import { GeneratedSource, PlaywrightGeneratedSource } from '../scrape/generated.js';
 import { validateExtraction, type ValidationVerdict } from '../scrape/validate.js';
 import { RequiresRenderError } from '../util/errors.js';
 import type { HttpClient } from '../util/http.js';
@@ -43,6 +46,7 @@ export class GenerateService {
     private readonly repositories: Repositories,
     private readonly http: HttpClient,
     private readonly ai: AiRunner | null,
+    private readonly browsers?: BrowserPool,
   ) {}
 
   public async generateFor(company: CompanyRow): Promise<GenerateResult> {
@@ -59,7 +63,15 @@ export class GenerateService {
         pendingPlaywright: false,
       };
     }
-    const distilled = distillDom(response.body);
+    let generationHtml = response.body;
+    let preferBrowser = false;
+    if (countLinks(response.body) < 3 && this.browsers) {
+      generationHtml = await this.browsers.page((page) =>
+        captureRenderedHtml(page, response.finalUrl),
+      );
+      preferBrowser = true;
+    }
+    const distilled = distillDom(generationHtml);
     const baseDigest = digest(distilled.dom);
     let feedback = '';
     let finalReasons: readonly string[] = [];
@@ -80,7 +92,13 @@ export class GenerateService {
         }
         throw error;
       }
-      const execution = await executeAndValidate(this.http, company, config);
+      const execution = await executeAndValidate(
+        this.http,
+        this.browsers,
+        company,
+        config,
+        preferBrowser,
+      );
       if (execution.requiresRender) {
         const pendingConfig = { ...config, strategy: 'playwright' as const };
         this.repositories.companies.updateMethod(
@@ -98,11 +116,14 @@ export class GenerateService {
       }
       if (execution.verdict.ok) {
         this.repositories.withTransaction(() => {
+          const persistedConfig = { ...config, strategy: execution.strategy };
           this.repositories.companies.updateMethod(
             company.id,
-            'generated-static',
+            execution.strategy === 'playwright'
+              ? 'generated-playwright'
+              : 'generated-static',
             null,
-            JSON.stringify(config),
+            JSON.stringify(persistedConfig),
           );
           this.repositories.companies.recordSuccess(company.id, execution.jobCount);
         });
@@ -110,7 +131,7 @@ export class GenerateService {
           status: 'generated',
           ok: true,
           jobCount: execution.jobCount,
-          strategy: config.strategy,
+          strategy: execution.strategy,
           confidence: config.confidence,
         };
       }
@@ -127,35 +148,77 @@ interface ExecutionResult {
   verdict: ValidationVerdict;
   jobCount: number;
   requiresRender: boolean;
+  strategy: ScraperConfig['strategy'];
 }
 
 async function executeAndValidate(
   http: HttpClient,
+  browsers: BrowserPool | undefined,
   company: CompanyRow,
   config: ScraperConfig,
+  preferBrowser: boolean,
 ): Promise<ExecutionResult> {
   try {
-    const postings = await new GeneratedSource(http, config).fetchPostings(company);
+    const useBrowser = preferBrowser || config.strategy === 'playwright';
+    if (useBrowser && !browsers) {
+      return renderRequired();
+    }
+    let postings;
+    if (useBrowser) {
+      if (!browsers) {
+        return renderRequired();
+      }
+      postings = await new PlaywrightGeneratedSource(browsers, config).fetchPostings(company);
+    } else {
+      postings = await new GeneratedSource(http, config).fetchPostings(company);
+    }
     return {
       verdict: validateExtraction(postings),
       jobCount: postings.length,
       requiresRender: false,
+      strategy: useBrowser ? 'playwright' : 'static',
     };
   } catch (error: unknown) {
     if (error instanceof RequiresRenderError) {
-      return {
-        verdict: { ok: false, reasons: [error.message] },
-        jobCount: 0,
-        requiresRender: true,
-      };
+      if (browsers) {
+        const postings = await new PlaywrightGeneratedSource(browsers, config).fetchPostings(
+          company,
+        );
+        return {
+          verdict: validateExtraction(postings),
+          jobCount: postings.length,
+          requiresRender: false,
+          strategy: 'playwright',
+        };
+      }
+      return renderRequired();
     }
     const reason = error instanceof Error ? error.message : String(error);
     return {
       verdict: { ok: false, reasons: [`Generated scraper execution failed: ${reason}`] },
       jobCount: 0,
       requiresRender: false,
+      strategy: preferBrowser ? 'playwright' : 'static',
     };
   }
+}
+
+function renderRequired(): ExecutionResult {
+  return {
+    verdict: { ok: false, reasons: ['Generated scraper requires browser rendering.'] },
+    jobCount: 0,
+    requiresRender: true,
+    strategy: 'playwright',
+  };
+}
+
+function countLinks(html: string): number {
+  return load(html)('a[href]').length;
+}
+
+async function captureRenderedHtml(page: Page, url: string): Promise<string> {
+  await page.goto(url, { waitUntil: 'networkidle' });
+  return page.content();
 }
 
 function buildPrompt(
