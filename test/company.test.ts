@@ -63,7 +63,7 @@ test('add inserts an untested company and detects through the injected seam', as
   assert.equal(result.company.careers_url, 'https://stripe.com/jobs');
   assert.equal(result.company.scrape_method, 'unknown');
   assert.equal(result.company.health, 'untested');
-  assert.equal(result.detection?.detail, 'no supported ATS signature found');
+  assert.equal(result.detection?.detail, 'no signature found after crawl (1 requests)');
   database.close();
 });
 
