@@ -651,3 +651,13 @@ operations completing inside 100ms print one stable success line instead of flas
 Plain output remains unchanged under pipes, CI, and `--no-animation`. Run orchestration exposes only
 a data callback for progress, while the command translates it into the existing spinner update
 contract, keeping terminal styling out of services.
+
+## 2026-07-20T18:29:28-04:00 — Documentation is a task-oriented, cross-linked handbook
+
+The compact root README remains the product overview and clean-install path; detailed operating
+knowledge now lives under `docs/`. The handbook begins with a linear beginner route, then separates
+configuration, discovery/scoring, daily operation, AI/Gmail, CRM, analytics/portability, command
+reference, and troubleshooting by user task. Each guide explains both commands and the state changes
+behind them, so a user can operate safely without reading source code while still understanding
+idempotency, degradation, event-history, credential, and backup boundaries. The docs index is the
+stable entry point and the root README links to it.
