@@ -597,3 +597,30 @@ text.
 though one could argue an accepted offer is equally "done." Quiet time is measured from
 `last_activity_at`, falling back to `created_at` for an application that was created but never
 transitioned — the same fallback `board` uses (Layer 5 Unit 3), applied consistently here too.
+
+## 2026-07-20T17:08:22-04:00 — SMTP credentials are environment-first and unsafe files are rejected
+
+The full email shape defaults in `EmailConfigSchema`, while `ConfigService` owns the cross-boundary
+credential check because the preferred password comes from the process environment rather than
+YAML. `EMPLOYED_SMTP_PASSWORD` wins over `email.smtp.password` at transport construction time. A
+plaintext fallback is accepted only when `config.yaml` is already mode 600; loading configuration
+never changes permissions, preserving doctor's read-only contract and making unsafe storage an
+explicit error with a fix command.
+
+## 2026-07-20T17:08:22-04:00 — Email remains delivery after durable report export
+
+`EmailService` consumes `DailyReport` through pure HTML and text renderers and has no repository
+access. `RunService` writes Markdown first, then attempts SMTP when configuration or `--email`
+requests it. Delivery failure is captured in `RunSummary.email` and rendered as a warning containing
+the durable report path; it never escapes the run or prevents the `runs` row from finishing. An
+injectable transport and digest sender keep all automated coverage offline.
+
+## 2026-07-20T17:08:22-04:00 — Doctor probes configuration and recorded state without repair
+
+Doctor now aggregates provider availability, Gmail MCP configuration presence, SMTP verification,
+scraper health and generated-config confidence, SQLite integrity, the latest run, and scheduler
+status. Gmail uses a lightweight configuration-presence probe rather than invoking an AI task; this
+keeps diagnosis fast, read-only, and free of AI budget while still returning provider-specific setup
+guidance. Missing scheduler and disabled optional features are warnings; unavailable enabled
+providers, Gmail/SMTP failures, broken scrapers, corrupt SQLite, and incomplete runs are problems.
+Default doctor remains exit zero, while `--strict` maps any problem to a nonzero process status.
