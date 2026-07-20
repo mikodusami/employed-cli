@@ -8,6 +8,21 @@ import { EmailThreadRepository } from './email-threads.js';
 import { EventRepository } from './events.js';
 import { JobRepository } from './jobs.js';
 import { RunRepository } from './runs.js';
+import type { ApplicationRow, CompanyRow, EventRow, JobRow } from '../types.js';
+
+export interface SnapshotRows {
+  companies: readonly CompanyRow[];
+  jobs: readonly JobRow[];
+  applications: readonly ApplicationRow[];
+  events: readonly EventRow[];
+}
+
+export interface SnapshotRestoreCounts {
+  companies: number;
+  jobs: number;
+  applications: number;
+  events: number;
+}
 
 /** Persistence repositories available to service and command layers. */
 export class Repositories {
@@ -33,6 +48,36 @@ export class Repositories {
   public withTransaction<Result>(operation: () => Result): Result {
     return this.database.transaction(operation)();
   }
+
+  /** Restores a trusted, version-validated native snapshot while preserving foreign-key ids. */
+  public restoreSnapshot(snapshot: SnapshotRows): SnapshotRestoreCounts {
+    return this.withTransaction(() => {
+      const counts = { companies: 0, jobs: 0, applications: 0, events: 0 };
+      counts.companies = insertRows(this.database, 'companies', snapshot.companies);
+      counts.jobs = insertRows(this.database, 'jobs', snapshot.jobs);
+      counts.applications = insertRows(this.database, 'applications', snapshot.applications);
+      counts.events = insertRows(this.database, 'events', snapshot.events);
+      return counts;
+    });
+  }
+}
+
+function insertRows<Row extends object>(
+  database: Database.Database,
+  table: 'companies' | 'jobs' | 'applications' | 'events',
+  rows: readonly Row[],
+): number {
+  let created = 0;
+  for (const row of rows) {
+    const record = row as Record<string, unknown>;
+    const columns = Object.keys(record);
+    const names = columns.map((column) => `"${column}"`).join(', ');
+    const values = columns.map((column) => `@${column}`).join(', ');
+    const statement = `INSERT OR IGNORE INTO ${table} (${names}) VALUES (${values})`;
+    const result = database.prepare(statement).run(record);
+    created += result.changes;
+  }
+  return created;
 }
 
 export type { ApplicationFilter, CreateApplicationInput } from './applications.js';
