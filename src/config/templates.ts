@@ -74,6 +74,15 @@ companies: []
   #   url: https://example.org/jobs
 `;
 
+/** Optional, manually verified ATS mappings that bypass network detection. */
+export const KNOWN_ATS_TEMPLATE = `# Optional ATS overrides, keyed by lowercase company name.
+# Overrides are checked before any HTTP request.
+# airbnb:
+#   method: greenhouse
+#   slug: airbnb
+{}
+`;
+
 /** Authoritative §7.6 keyword profile used to score job relevance. */
 export const KEYWORDS_TEMPLATE = `# Weighted phrases used by the scoring layer.
 title:
