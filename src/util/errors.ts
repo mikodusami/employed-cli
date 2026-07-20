@@ -14,6 +14,9 @@ export class ValidationError extends AppError {}
 /** Indicates a network or timeout failure before an HTTP response was received. */
 export class HttpError extends AppError {}
 
+/** Indicates SMTP verification or digest-delivery failure. */
+export class EmailError extends AppError {}
+
 /** Indicates an ATS response or adapter contract failure. */
 export class AdapterError extends AppError {}
 
