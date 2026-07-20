@@ -20,6 +20,9 @@ export class AdapterError extends AppError {}
 /** Indicates that robots.txt forbids an automated request path. */
 export class RobotsDisallowedError extends AppError {}
 
+/** Indicates that a generated scraper needs a browser-rendered execution strategy. */
+export class RequiresRenderError extends AppError {}
+
 /** Indicates a configuration read, parse, or validation failure. */
 export class ConfigError extends AppError {
   public constructor(
