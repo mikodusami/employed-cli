@@ -8,6 +8,7 @@ test('relativeTime formats past, future, recent, and invalid values', () => {
   const now = new Date('2026-07-19T12:00:00Z');
   assert.equal(relativeTime('2026-07-17T12:00:00Z', now), '2d ago');
   assert.equal(relativeTime('2026-07-19T10:00:00Z', now), '2h ago');
+  assert.equal(relativeTime('2026-07-19 10:00:00', now), '2h ago');
   assert.equal(relativeTime('2026-07-19T12:20:00Z', now), 'in 20m');
   assert.equal(relativeTime('2026-07-19T11:59:45Z', now), 'just now');
   assert.equal(relativeTime('invalid', now), 'unknown');
