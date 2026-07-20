@@ -65,7 +65,7 @@ export class GenerateService {
     }
     let generationHtml = response.body;
     let preferBrowser = false;
-    if (countLinks(response.body) < 3 && this.browsers) {
+    if (countLikelyJobLinks(response.body) < 3 && this.browsers) {
       generationHtml = await this.browsers.page((page) =>
         captureRenderedHtml(page, response.finalUrl),
       );
@@ -212,8 +212,15 @@ function renderRequired(): ExecutionResult {
   };
 }
 
-function countLinks(html: string): number {
-  return load(html)('a[href]').length;
+function countLikelyJobLinks(html: string): number {
+  const $ = load(html);
+  return $('a[href]')
+    .filter((_index, element) => {
+      const link = $(element);
+      const signal = `${link.attr('href') ?? ''} ${link.text()}`;
+      return /job|career|position|opening|role|vacan/i.test(signal);
+    })
+    .length;
 }
 
 async function captureRenderedHtml(page: Page, url: string): Promise<string> {
