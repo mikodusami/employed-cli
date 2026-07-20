@@ -1,3 +1,82 @@
+## Layer 6, Unit 2: Email Digest Delivery (SMTP) + `employed doctor` Completion
+
+**What this is:** Two loose ends that make the daily loop reach your inbox and make the whole system self-diagnosable. Email delivery fills the reserved `--email` hook from Layer 4 Unit 3 — the report already exists as markdown, this just _delivers_ it. Doctor completion pulls every health signal the prior units have been recording into one diagnostic view — the answer to "is everything wired up and working," especially for someone who just cloned the repo.
+
+The discipline: email is a **delivery mechanism for an existing artifact**, not a new report — it renders the same `DailyReport` model (Layer 4 Unit 2's third renderer, finally). Doctor is **read-only aggregation** — it reports state the system already tracks; it diagnoses, never fixes, never fails a run.
+
+---
+
+**Deliverables:**
+
+**New dependency:** `nodemailer`.
+
+**`src/report/render/email.ts` — the third renderer:**
+
+`renderEmailHtml(report): string` and `renderEmailText(report): string` — the same `DailyReport` model → an HTML email body (simple, inline-styled, email-client-safe: tables not flexbox, no external CSS) and a plaintext alternative. Band grouping, job links, needs-attention, the optional AI summary if present. This is why the report was built as a model with separate renderers three layers ago — email is additive, not a rewrite. Keep the HTML deliberately plain; fancy email templating is a rabbit hole and job digests want scannability over polish.
+
+**`src/services/email.ts` — `EmailService`:**
+
+```typescript
+async sendDigest(report: DailyReport): Promise<void>;
+async verify(): Promise<EmailStatus>;   // SMTP connection check for doctor
+```
+
+nodemailer transport built from config: SMTP host/port/user + app password. Sends multipart (HTML + text alternative), subject like `employed — 7 new roles (2 A-band) — 2026-07-20`. The subject line carries the signal so it's useful even unopened. On send failure: throw a typed `EmailError` — but the **caller in `run` catches it and degrades** (the report file already exists on disk; a failed email must never fail the run or lose data — §7.9 "email is additive, report file is unconditional"). `verify()` does a transport `.verify()` for doctor without sending.
+
+**Config additions — extend the `email:` block (schema, additive):**
+
+```yaml
+email:
+  enabled: false
+  to: "" # recipient
+  from: "" # usually same as smtp.user
+  smtp:
+    host: smtp.gmail.com
+    port: 465
+    user: "" # gmail address
+    # password NOT here in plaintext template — see below
+```
+
+**Credential handling (the security note that matters):** the SMTP app password is the _one_ credential `employed` itself holds (§13). Options, document the recommended one in README: (a) `EMPLOYED_SMTP_PASSWORD` environment variable — read at send time, never written to config, **preferred**; (b) a `password` field in `config.yaml` with an enforced `chmod 600` and a loud README warning. The schema supports both (env var wins if both present); the template ships with the env-var approach commented as recommended and the plaintext field commented out. This is a local single-user tool, so this is appropriately boring — but a Gmail app password in a world-readable file is the one foot-gun to guard against, so make the env-var path the path of least resistance.
+
+**`run` + `run.ts` wiring:** the reserved email hook activates — `config.email.enabled || --email` → after `writeReport`, `EmailService.sendDigest(report)`, wrapped so failure logs a report-line and continues. The morning run now lands in your inbox.
+
+**`employed doctor` — completed (extend the Layer 3 Unit 5 slice):**
+
+Pull every health signal into one command, sectioned:
+
+- **AI providers** (already built) — per provider: installed, version, enabled, active-by-preference.
+- **Gmail MCP** — probe whether the active provider can reach the Gmail tool. This is the cloner's "is my email wired up" check. For Claude: check the MCP is registered; for Codex: check `config.toml` has the server. A light probe (or a documented "run this to test" hint if a live probe is too heavy) — actionable either way: if broken, print the exact setup command (`claude mcp add gmail ...` / the Codex `config.toml` snippet).
+- **Email/SMTP** — if enabled, `EmailService.verify()`; report reachable or the connection error. If disabled, say so (not an error).
+- **Company fleet health** — the section that's been accumulating since Layer 2: count by health status (ok/degraded/broken/untested), then list the `broken` and `degraded` companies by name with last-success age and consecutive-failure count. This is the "which scrapers need attention" view. Low-`confidence` generated configs surfaced here too (the signal stored-but-unused since Layer 3 Unit 6 — now it has a reader).
+- **Database** (already built) — path, `user_version`, integrity_check, table presence.
+- **Last run** (from Layer 4 Unit 3) — when, duration, new jobs, failures; a `started_at` with null `finished_at` flagged as a crashed/incomplete run.
+- **Scheduler** — whether a launchd/cron entry is installed and next fire time (reads the schedule service's `status`).
+
+Each section: green check / amber warn / red problem, and **every problem line carries the fix** — doctor's job is to turn "something's wrong" into "run this to fix it." Exit 0 always (diagnostics don't fail builds); consider `--strict` exiting nonzero if any red, for CI-style use.
+
+**Architectural notes:**
+
+- **Email renders the existing model** — if you find yourself querying the DB inside the email renderer, stop; enrich the `DailyReport` model instead. Renderers stay pure `(model) → output`.
+- **Doctor never mutates.** It's a pure aggregation of recorded state — health columns, run rows, config, binary probes. If doctor starts "fixing" things, that's a different command (`heal`, `generate`, `schedule install`). Keep it diagnostic.
+- **Every doctor problem is actionable.** The value isn't the red X, it's the fix command next to it. This is the difference between a status page and a support tool — and it's what makes the repo cloneable by someone who isn't you.
+- The SMTP password is the system's only self-held secret — the env-var-preferred design keeps the credential surface minimal, consistent with the delegation architecture that keeps Google creds out entirely.
+
+**Acceptance criteria:**
+
+- `renderEmailHtml`/`renderEmailText` produce valid bodies from a seeded `DailyReport`; empty sections omitted; renders with no DB access (pure).
+- `EmailService.sendDigest` against a mock transport sends multipart with the signal-carrying subject; a transport failure throws `EmailError`.
+- `run --email` with a failing transport: report file still written, run completes, failure surfaced as a report/log line (email failure never aborts run — asserted).
+- Env-var password path works and takes precedence; with neither env var nor config password, email-enabled config fails validation with a clear "set EMPLOYED_SMTP_PASSWORD" message.
+- `doctor` renders all sections on a seeded system; a broken-scraper company appears by name with fix guidance; a crashed run row (null `finished_at`) is flagged; AI/Gmail/SMTP problems each print their specific fix command.
+- `doctor` exits 0 with warnings present; `--strict` exits nonzero when a red problem exists.
+- `doctor` performs no writes (assert read-only) and no scraping.
+- Suite offline; SMTP mocked, provider probes faked.
+
+---
+
+Say **next** for the final unit — Layer 6, Unit 3: `export` / `import-hq` (§15), README with the full setup walkthrough, and the banner/animation polish pass.
+
 ## Layer 6, Unit 1: `employed stats` (§7.8) — Analytics, Sparkline, Nudges
 
 **What this is:** The "what is actually working" command — every metric computed straight from SQL over the applications and events the CRM and sync have been accumulating. This is where the append-only event log (Unit 3's discipline) pays off: interview rate is an _event-scan_, not a current-status count, so a candidate who reached "interview" then got rejected still counts as having interviewed. Pure computation over stored data, zero AI, zero network.
