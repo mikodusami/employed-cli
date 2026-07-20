@@ -35,7 +35,7 @@ function initialize(context: CommandContext): void {
     context.ui,
     'Migrating SQLite database',
     (databaseVersion) => `Database schema is at version ${databaseVersion}`,
-    () => getDatabaseVersion(context.database),
+    () => getDatabaseVersion(context.db),
   );
 
   if (scaffold.created.length === 0) {
