@@ -18,6 +18,7 @@ export type {
   Health,
   JobRow,
   JobStatus,
+  ProviderName,
   RunRow,
   ScrapeMethod,
   Tier,
