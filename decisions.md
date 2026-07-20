@@ -14,3 +14,26 @@ lint engine can be added in a later tooling layer.
 Each completed layer or unit will append reproducible, user-facing checks to `userflows.md`. These
 flows use both the compiled entry point and the development runner so release and local behavior are
 verified independently.
+
+## 2026-07-19T19:59:12-04:00 — Layer 2 configuration ownership
+
+Zod schemas are the sole source of configuration defaults and inferred types. `ConfigService`
+owns YAML reading, validation, actionable errors, and per-process memoization; `ScaffoldService`
+owns non-destructive filesystem creation. The `init` command only orchestrates these services
+through an injected `CommandContext`.
+
+The referenced §7.6 keyword seed profile was not present in the repository. The initial template
+therefore uses a conservative software-engineering starter profile and remains user-editable. It
+must be reconciled if the authoritative §7.6 values are added later.
+
+## 2026-07-19T19:59:12-04:00 — Layer 2 persistence boundaries
+
+SQLite uses forward-only, transactional `user_version` migrations. SQL is confined to migration
+and repository modules; repositories enforce persistence constraints, while cross-repository
+transactions remain available to services through `withTransaction`. The CLI lazily owns one
+connection per process and injects that connection plus its repository bundle into command context,
+so informational commands do not create user data as a side effect.
+
+The referenced §6 schema was also absent. Migration 1 implements the seven named tables and every
+column implied by Layer 2, with `ai_cache` replacing `claude_cache` as directed. This inferred schema
+must be compared with §6 if that source is later supplied.

@@ -39,3 +39,43 @@ Run these flows from the repository root after `npm install` and `npm run build`
 1. Run `npm link` (use a user-writable npm prefix if the global npm directory is protected).
 2. Run `employed --help`.
 3. Confirm the installed command shows the same help text as Flow 1.
+
+## Layer 2 — Configuration and SQLite persistence
+
+Run these flows after `npm run build`. They operate on `~/.employed`; back up that directory first
+if it already contains data you care about.
+
+### Flow 1: Initialize a fresh workspace
+
+1. Run `employed init --no-animation`.
+2. Confirm the command reports valid configuration and database schema version 1.
+3. Confirm `~/.employed` contains `config.yaml`, `companies.yaml`, `keywords.yaml`, `employed.db`,
+   `reports/`, and `logs/`.
+4. Open the YAML files and confirm their comments explain the available settings.
+
+### Flow 2: Prove initialization is idempotent
+
+1. Add a comment to `~/.employed/config.yaml`.
+2. Run `employed init --no-animation` again.
+3. Confirm it says the workspace is already initialized and no files were changed.
+4. Confirm your added comment is still present.
+
+### Flow 3: Recover a partially initialized workspace
+
+1. Move one generated YAML file out of `~/.employed` temporarily.
+2. Run `employed init --no-animation`.
+3. Confirm only the missing file is recreated and the other two are reported as preserved.
+4. Restore your original file if it contained edits you want to keep.
+
+### Flow 4: See an actionable validation error
+
+1. Set `run.concurrency` to `99` in `~/.employed/config.yaml`.
+2. Run `employed init --no-animation`.
+3. Confirm the error names `config.yaml`, identifies `run.concurrency`, and exits unsuccessfully.
+4. Restore concurrency to a value from 1 through 10 and rerun init successfully.
+
+### Flow 5: Run the automated persistence contract
+
+1. Run `npm test`.
+2. Confirm all configuration and SQLite tests pass, including migration rollback, foreign-key
+   enforcement, WAL mode, deduplication, memoization, and transaction rollback.

@@ -18,6 +18,12 @@ export const DB_PATH = path.join(EMPLOYED_DIR, 'employed.db');
 /** User configuration location. */
 export const CONFIG_PATH = path.join(EMPLOYED_DIR, 'config.yaml');
 
+/** Company watch-list configuration location. */
+export const COMPANIES_PATH = path.join(EMPLOYED_DIR, 'companies.yaml');
+
+/** Job-scoring keyword configuration location. */
+export const KEYWORDS_PATH = path.join(EMPLOYED_DIR, 'keywords.yaml');
+
 /** Generated report directory. */
 export const REPORTS_DIR = path.join(EMPLOYED_DIR, 'reports');
 
