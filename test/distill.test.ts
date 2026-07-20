@@ -1,5 +1,6 @@
 /** Verifies deterministic, bounded DOM reduction around repeated links. */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { distillDom } from '../src/scrape/distill.js';
@@ -40,4 +41,17 @@ test('distiller is deterministic and caps a window around the dense link region'
   assert.ok(Buffer.byteLength(first.dom) <= 35 * 1024);
   assert.match(first.dom, /id="jobs"/);
   assert.match(first.linkDensityHint, /3 links/);
+});
+
+test('distiller bounds the saved multi-megabyte careers DOM fixture', () => {
+  const html = readFileSync(
+    new URL('../fixtures/google/sampledomtree.html', import.meta.url),
+    'utf8',
+  );
+
+  const result = distillDom(html);
+
+  assert.ok(Buffer.byteLength(result.dom) <= 35 * 1024);
+  assert.match(result.linkDensityHint, /subtree containing \d+ links/);
+  assert.match(result.dom, /jobs|engineer|software/i);
 });
