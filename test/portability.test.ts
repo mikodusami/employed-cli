@@ -123,7 +123,8 @@ function importerFor(repositories: Repositories, keywordsPath = keywordFile()): 
 }
 
 function keywordFile(): string {
-  const filePath = path.join(mkdtempSync(path.join(tmpdir(), 'employed-portability-')), 'keywords.yaml');
+  const directory = mkdtempSync(path.join(tmpdir(), 'employed-portability-'));
+  const filePath = path.join(directory, 'keywords.yaml');
   writeFileSync(filePath, 'title: {}\ndescription: {}\nnegative: {}\n');
   return filePath;
 }
