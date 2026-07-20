@@ -1,8 +1,15 @@
 /** Safe argv-only subprocess execution with bounded output and hard timeout escalation. */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import type { Readable } from 'node:stream';
 
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
 const KILL_GRACE_MS = 250;
+
+type SpawnProcess = (
+  binary: string,
+  args: readonly string[],
+  options: { shell: false; stdio: ['ignore', 'pipe', 'pipe'] },
+) => ChildProcessByStdio<null, Readable, Readable>;
 
 export interface ProcessRequest {
   binary: string;
@@ -23,10 +30,16 @@ export interface ProcessRunner {
 
 /** Runs a child without a shell, preventing prompt or argument interpolation. */
 export class NodeProcessRunner implements ProcessRunner {
+  public constructor(
+    private readonly spawnProcess: SpawnProcess = (binary, args, options) =>
+      spawn(binary, [...args], options),
+    private readonly killGraceMs = KILL_GRACE_MS,
+  ) {}
+
   public run(request: ProcessRequest): Promise<ProcessResult> {
     return new Promise((resolve, reject) => {
       // SECURITY: argv is always passed as an array and shell execution is never enabled.
-      const child = spawn(request.binary, [...request.args], {
+      const child = this.spawnProcess(request.binary, request.args, {
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -39,7 +52,7 @@ export class NodeProcessRunner implements ProcessRunner {
       const timeout = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');
-        killTimer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS);
+        killTimer = setTimeout(() => child.kill('SIGKILL'), this.killGraceMs);
       }, request.timeoutMs);
 
       const append = (current: string, chunk: Buffer): string => {
