@@ -1,8 +1,9 @@
 /** Resolves implemented scraping sources without leaking adapter selection into services. */
 import type { ScrapeMethod } from '../../db/index.js';
 import type { HttpClient } from '../../util/http.js';
+import type { BrowserPool } from '../browser.js';
+import { GeneratedSource, PlaywrightGeneratedSource } from '../generated.js';
 import type { ScrapeSource } from '../types.js';
-import { GeneratedSource } from '../generated.js';
 import { AshbyAdapter } from './ashby.js';
 import { GreenhouseAdapter } from './greenhouse.js';
 import { LeverAdapter } from './lever.js';
@@ -12,14 +13,17 @@ import { WorkdayAdapter } from './workday.js';
 
 interface AdapterDependencies {
   http: HttpClient;
+  browsers?: BrowserPool;
 }
 
-type AdapterFactory = (dependencies: AdapterDependencies) => ScrapeSource;
+type AdapterFactory = (dependencies: AdapterDependencies) => ScrapeSource | null;
 
 const adapterFactories: Partial<Record<ScrapeMethod, AdapterFactory>> = {
   ashby: ({ http }) => new AshbyAdapter(http),
   greenhouse: ({ http }) => new GreenhouseAdapter(http),
   'generated-static': ({ http }) => new GeneratedSource(http),
+  'generated-playwright': ({ browsers }) =>
+    browsers ? new PlaywrightGeneratedSource(browsers) : null,
   lever: ({ http }) => new LeverAdapter(http),
   recruitee: ({ http }) => new RecruiteeAdapter(http),
   smartrecruiters: ({ http }) => new SmartRecruitersAdapter(http),
