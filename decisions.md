@@ -123,3 +123,11 @@ without receiving or leaking the raw SQLite driver.
 completed, skipped, or failed results. Detection-tail smoke tests update health only when an adapter
 returns at least one valid posting. SQLite `CURRENT_TIMESTAMP` values are parsed as UTC for accurate
 relative display.
+
+## 2026-07-19T22:05:00-04:00 — Isolated state for every user flow
+
+Every user flow that initializes or mutates Employed state runs in a new temporary `EMPLOYED_DIR`.
+The flow begins by exporting a `mktemp -d` directory and calling `employed init`, then removes that
+specific directory and unsets the variable on completion. This makes each flow reproducible in any
+order and prevents jobs, companies, configuration edits, or health data from leaking into another
+flow.
