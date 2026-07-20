@@ -10,7 +10,9 @@ import { register as registerBoard } from './commands/board.js';
 import { register as registerCompany } from './commands/company.js';
 import { register as registerDismiss } from './commands/dismiss.js';
 import { register as registerDoctor } from './commands/doctor.js';
+import { register as registerExport } from './commands/export.js';
 import { register as registerImport } from './commands/import.js';
+import { register as registerImportHq } from './commands/import-hq.js';
 import { register as registerInit } from './commands/init.js';
 import { register as registerMove } from './commands/move.js';
 import { register as registerNew } from './commands/new.js';
@@ -113,6 +115,8 @@ async function run(): Promise<void> {
   registerMove(program, context);
   registerDismiss(program, context);
   registerStats(program, context);
+  registerExport(program, context);
+  registerImportHq(program, context);
   registerDoctor(program, context);
 
   try {
