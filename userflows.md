@@ -342,3 +342,64 @@ Run `npm run build`; then use the isolated-state protocol before each flow.
    may overlap, and observed global concurrency never exceeds the configured cap.
 3. Run `rg 'TODO\(politeness-unit\)|PAGE_DELAY_MS' src` and confirm it returns no matches.
 4. Confirm Workday pagination tests still stop at 25 pages, now without adapter-owned sleeps.
+
+## Layer 3, Unit 5 — Provider-agnostic AI runner
+
+Run `npm run build` first. Start and finish **each** flow with the isolated-state protocol at the top
+of this file; do not reuse a workspace between flows. These checks inspect provider CLIs but never
+send a prompt or consume an AI call.
+
+### Flow 1: Diagnose installed providers and the fresh database
+
+1. Start a new temporary workspace and initialize it using the isolated-state protocol.
+2. Run `employed doctor --no-animation`.
+3. Confirm Claude and Codex each show enabled status and either an installed version or
+   `binary not found on PATH`.
+4. Confirm exactly one installed provider is marked active according to preference order; if neither
+   binary is installed, confirm neither is active.
+5. Confirm the database path begins with the current `$EMPLOYED_DIR`, schema version is `2`, table
+   count is `8`, integrity is `ok`, and the command exits with status 0.
+6. Remove the temporary workspace and unset `EMPLOYED_DIR` using the cleanup protocol.
+
+### Flow 2: Change provider preference without crossing workspaces
+
+1. Start and initialize a new temporary workspace.
+2. In that workspace's `config.yaml`, reverse `ai.preference` to `[codex, claude]`.
+3. Run `employed doctor --no-animation`.
+4. If Codex is installed, confirm Codex is active. Otherwise, confirm the first installed enabled
+   fallback is active; unavailable providers remain reported rather than causing failure.
+5. Restore `[claude, codex]`, rerun doctor, and confirm the active marker follows the new order when
+   both binaries are installed.
+6. Run the isolated cleanup commands.
+
+### Flow 3: Verify AI-free degradation
+
+1. Start and initialize a new temporary workspace.
+2. Set `ai.enabled` to `false` in that workspace's `config.yaml`.
+3. Run `employed doctor --no-animation`.
+4. Confirm it prints `AI disabled by config`, marks both providers disabled, leaves the active column
+   empty, still reports database integrity, and exits successfully.
+5. Run `npm test` and confirm the disabled-config contract builds a null AI runner.
+6. Run the isolated cleanup commands.
+
+### Flow 4: Verify fallback, cache isolation, and budgets offline
+
+1. Start and initialize a new temporary workspace.
+2. Run `npm test` without any live-test environment variable.
+3. Confirm the AI runner tests pass: unavailable Codex falls back to Claude, both unavailable produce
+   a typed error, and disabled providers are filtered.
+4. Confirm an identical task is invoked once because of cache, changing the provider invokes again,
+   and cache hits do not consume the two-call budget.
+5. Confirm the third uncached invocation reports budget exhaustion.
+6. Run the isolated cleanup commands.
+
+### Flow 5: Verify strict JSON correction and timeout handling offline
+
+1. Start and initialize a new temporary workspace.
+2. Run `npm test`.
+3. Confirm fenced, bare, prose-wrapped, nested-string, and missing-JSON extractor cases pass.
+4. Confirm invalid-then-valid output triggers exactly one correction and succeeds, while two invalid
+   outputs retain both raw payloads in `AiValidationError`.
+5. Confirm provider timeout and missing-binary cases become typed provider errors and the suite exits
+   cleanly with no child process left running.
+6. Run the isolated cleanup commands.
