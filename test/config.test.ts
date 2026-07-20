@@ -16,7 +16,7 @@ test('schemas populate every top-level configuration section from an empty mappi
   assert.deepEqual(AppConfigSchema.parse({}), {
     run: { time: '07:00', concurrency: 4 },
     email: { enabled: false },
-    claude: { enabled: true, maxCallsPerRun: 10 },
+    ai: { provider: 'claude', enabled: true, maxCallsPerRun: 10 },
   });
   assert.deepEqual(CompaniesFileSchema.parse({}), {
     defaults: { tier: 'B' },
@@ -37,6 +37,7 @@ test('scaffold templates validate and existing user files are preserved', () => 
 
   const service = new ConfigService(baseDirectory);
   assert.equal(service.loadApp().run.concurrency, 4);
+  assert.equal(service.loadApp().ai.provider, 'claude');
   assert.deepEqual(service.loadCompanies().companies, []);
   const keywords = service.loadKeywords();
   assert.equal(keywords.title['new grad'], 6);
