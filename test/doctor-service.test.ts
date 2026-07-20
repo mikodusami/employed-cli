@@ -11,7 +11,7 @@ import { createDb, Repositories } from '../src/db/index.js';
 import type { ScraperConfig } from '../src/scrape/config.js';
 import { DoctorService } from '../src/services/doctor.js';
 
-test('doctor surfaces Gmail, SMTP, fleet, crashed-run, and scheduler guidance read-only', async () => {
+test('doctor surfaces every actionable diagnostic without writes', async () => {
   const database = createDb(':memory:');
   const repositories = new Repositories(database);
   const company = repositories.companies.insert({
@@ -95,7 +95,10 @@ class FakeProvider implements AiProvider {
 }
 
 function totalChanges(database: ReturnType<typeof createDb>): number {
-  return database.prepare<[], { count: number }>('SELECT total_changes() AS count').get()?.count ?? 0;
+  const row = database
+    .prepare<[], { count: number }>('SELECT total_changes() AS count')
+    .get();
+  return row?.count ?? 0;
 }
 
 function scraperConfig(confidence: number): ScraperConfig {
