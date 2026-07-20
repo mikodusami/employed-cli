@@ -52,6 +52,8 @@ if it already contains data you care about.
 3. Confirm `~/.employed` contains `config.yaml`, `companies.yaml`, `keywords.yaml`, `employed.db`,
    `reports/`, and `logs/`.
 4. Open the YAML files and confirm their comments explain the available settings.
+5. Confirm `keywords.yaml` includes `new grad: 6`, `machine learning: 2`, and
+   `phd required: 6` in their respective title, description, and negative lists.
 
 ### Flow 2: Prove initialization is idempotent
 
