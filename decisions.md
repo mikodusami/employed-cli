@@ -144,3 +144,17 @@ full content and per-job detail requests would create unacceptable N+1 traffic. 
 three boards per new provider confirmed the mappings. Ubisoft demonstrated that a SmartRecruiters
 department object may omit its label, so that nested field is optional. NVIDIA confirmed Workday
 public URLs require the careers-site segment before `externalPath`.
+
+## 2026-07-19T23:54:22-04:00 — Composable HTTP robustness stack
+
+HTTP policy is implemented as independently testable decorators over the stable `HttpClient` seam.
+Retry wraps politeness, which wraps conditional caching and the raw transport. This intentionally
+differs from the layer's illustrative nesting because retry must invoke politeness again for every
+attempt; putting politeness outermost would let later attempts bypass its domain queue. Cache
+revalidation remains inside that queue, and POST requests bypass caching.
+
+Per-domain scheduling uses a documented final-two-host-label approximation and a global semaphore.
+Detection is the only current non-API fetch, so it consults a memoized robots gate and records denied
+companies as manual. Tier-1 adapter APIs remain exempt. Migration 2 owns the persistent HTTP cache,
+while `--verbose` routes 304 diagnostics through the UI rather than printing inside infrastructure.
+HTTP construction remains lazy so help, version, and initialization do not require existing config.
