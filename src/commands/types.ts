@@ -6,6 +6,7 @@ import type { ConfigService } from '../config/index.js';
 import type { Repositories } from '../db/index.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { UI } from '../ui/index.js';
+import type { HttpClient } from '../util/http.js';
 
 /** Dependencies shared by command orchestration code. */
 export interface CommandContext {
@@ -14,6 +15,7 @@ export interface CommandContext {
   db: Database.Database;
   repos: Repositories;
   detector: AtsDetector;
+  http: HttpClient;
 }
 
 /** Registers one command and its options on the root program. */
