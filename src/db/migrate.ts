@@ -17,6 +17,20 @@ const migrations: readonly Migration[] = [
     version: 1,
     up: (database) => database.exec(readFileSync(SCHEMA_SQL_PATH, 'utf8')),
   },
+  {
+    version: 2,
+    up: (database) =>
+      database.exec(`
+        CREATE TABLE http_cache (
+          url TEXT PRIMARY KEY,
+          etag TEXT,
+          last_modified TEXT,
+          body TEXT NOT NULL,
+          content_type TEXT,
+          fetched_at TEXT NOT NULL
+        );
+      `),
+  },
 ];
 
 /** Runs every migration newer than the database's current user version. */
