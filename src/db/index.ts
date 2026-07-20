@@ -4,6 +4,7 @@ export { Repositories } from './repositories/index.js';
 export type {
   InsertCompanyInput,
   JobInsertInput,
+  JobScoreUpdate,
   UpsertJobInput,
   UpsertJobResult,
 } from './repositories/index.js';
