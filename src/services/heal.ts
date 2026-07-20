@@ -74,7 +74,7 @@ export class HealService {
     }
 
     if (isAtsMethod(company.scrape_method)) {
-      const detection = await this.detector.detect(company.careers_url);
+      const detection = await this.detector.detect(company);
       if (isAtsMethod(detection.method)) {
         const detectedCompany = this.repositories.companies.updateMethod(
           company.id,
