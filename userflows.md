@@ -448,56 +448,6 @@ flow below explicitly creates and destroys its own workspace.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
 
-# Remediation — multi-hop ATS detection and known-slug overrides
-
-Run `npm run build` first. Each flow below starts from a newly initialized workspace and destroys it
-afterward; do not reuse an earlier flow's state.
-
-### Flow 1: Verify a known override bypasses detection HTTP
-
-1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
-2. Run `employed init --no-animation`.
-3. Confirm `$EMPLOYED_DIR/known_ats.yaml` exists and contains only commented guidance by default.
-4. Run `npm test -- --test-name-pattern="known ATS override returns before any HTTP request"`.
-5. Confirm the test passes and proves the Airbnb override returns `greenhouse` / `airbnb` with an
-   HTTP call count of zero.
-6. Run `rm -rf "$EMPLOYED_DIR"`.
-7. Run `unset EMPLOYED_DIR`.
-
-### Flow 2: Detect Airbnb through the bounded live crawl
-
-1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
-2. Run `employed init --no-animation`.
-3. Leave `known_ats.yaml` empty so this flow exercises automatic detection.
-4. With internet access, run `EMPLOYED_LIVE_ATS_TESTS=1 npm test --
-   --test-name-pattern="live detector and adapters"`.
-5. Confirm the live case identifies `https://careers.airbnb.com` as Greenhouse slug `airbnb`.
-6. Run `rm -rf "$EMPLOYED_DIR"`.
-7. Run `unset EMPLOYED_DIR`.
-
-### Flow 3: Verify ranking, exclusions, multi-hop matching, and the hard cap offline
-
-1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
-2. Run `employed init --no-animation`.
-3. Run `npm test -- --test-name-pattern="browse candidates|detail candidates|landing to browse to
-   detail|pathological crawl"`.
-4. Confirm relative URLs resolve, duplicate/social/mail links are excluded, depth-2 Greenhouse is
-   found, and the pathological fixture makes exactly five requests before returning unknown.
-5. Run `rm -rf "$EMPLOYED_DIR"`.
-6. Run `unset EMPLOYED_DIR`.
-
-### Flow 4: Reject a malformed override with an actionable field path
-
-1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
-2. Run `employed init --no-animation`.
-3. Replace `$EMPLOYED_DIR/known_ats.yaml` with an `Airbnb` entry whose `method` is `unsupported` and
-   whose `slug` is empty.
-4. Run `employed company list --no-animation`.
-5. Confirm the command fails cleanly, names `known_ats.yaml`, and identifies both the invalid
-   `Airbnb.method` and `Airbnb.slug` fields.
-6. Run `rm -rf "$EMPLOYED_DIR"`.
-7. Run `unset EMPLOYED_DIR`.
-
 ### Flow 4: Degrade safely when AI is disabled
 
 1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
@@ -1462,5 +1412,55 @@ Run `npm run build` first. Every stateful flow owns and destroys all temporary w
 4. Confirm doctor explains intentionally omitted integrations and `employed run --no-ai` writes a
    daily report.
 5. Run `npm test`; confirm portability coverage passes without live services.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+# Remediation — multi-hop ATS detection and known-slug overrides
+
+Run `npm run build` first. Each flow below starts from a newly initialized workspace and destroys it
+afterward; do not reuse an earlier flow's state.
+
+### Flow 1: Verify a known override bypasses detection HTTP
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Confirm `$EMPLOYED_DIR/known_ats.yaml` exists and contains only commented guidance by default.
+4. Run `npm test -- --test-name-pattern="known ATS override returns before any HTTP request"`.
+5. Confirm the test passes and proves the Airbnb override returns `greenhouse` / `airbnb` with an
+   HTTP call count of zero.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Detect Airbnb through the bounded live crawl
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Leave `known_ats.yaml` empty so this flow exercises automatic detection.
+4. With internet access, run `EMPLOYED_LIVE_ATS_TESTS=1 npm test --
+   --test-name-pattern="live detector and adapters"`.
+5. Confirm the live case identifies `https://careers.airbnb.com` as Greenhouse slug `airbnb`.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Verify ranking, exclusions, multi-hop matching, and the hard cap offline
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test -- --test-name-pattern="browse candidates|detail candidates|landing to browse to
+   detail|pathological crawl"`.
+4. Confirm relative URLs resolve, duplicate/social/mail links are excluded, depth-2 Greenhouse is
+   found, and the pathological fixture makes exactly five requests before returning unknown.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Reject a malformed override with an actionable field path
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Replace `$EMPLOYED_DIR/known_ats.yaml` with an `Airbnb` entry whose `method` is `unsupported` and
+   whose `slug` is empty.
+4. Run `employed company list --no-animation`.
+5. Confirm the command fails cleanly, names `known_ats.yaml`, and identifies both the invalid
+   `Airbnb.method` and `Airbnb.slug` fields.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
