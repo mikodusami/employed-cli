@@ -3,7 +3,9 @@ import { Option, type Command } from 'commander';
 
 import type { Tier } from '../db/index.js';
 import { CompanyService } from '../services/company.js';
+import { GenerateService, type GenerateResult } from '../services/generate.js';
 import { ScrapeService } from '../services/scrape.js';
+import { ValidationError } from '../util/errors.js';
 import { relativeTime } from '../util/time.js';
 import type { CommandContext } from './types.js';
 
@@ -24,6 +26,11 @@ export function register(program: Command, context: CommandContext): void {
     .action(async (name: string, options: AddOptions) => {
       await addCompany(context, name, options);
     });
+
+  company
+    .command('generate <name>')
+    .description('generate and validate a scraper for a custom careers page')
+    .action(async (name: string) => generateCompany(context, name));
 
   company
     .command('list')
@@ -55,11 +62,60 @@ async function addCompany(
       }
       return;
     }
+    if (result.generation) {
+      renderGenerationResult(context, result.company.name, result.generation, spinner);
+      return;
+    }
     const detail = detection?.detail ?? 'no detail';
     spinner.succeed(`${result.company.name} — detected: unknown (${detail})`);
   } catch (error: unknown) {
     spinner.fail(`Could not add ${name}`);
     throw error;
+  }
+}
+
+async function generateCompany(context: CommandContext, name: string): Promise<void> {
+  const company = context.repos.companies.findByName(name);
+  if (!company) {
+    throw new ValidationError(`Company ${name} is not registered.`);
+  }
+  const spinner = context.ui.spinner(`Generating and validating a scraper for ${company.name}`).start();
+  try {
+    const result = await new GenerateService(context.repos, context.http, context.ai).generateFor(
+      company,
+    );
+    renderGenerationResult(context, company.name, result, spinner);
+  } catch (error: unknown) {
+    spinner.fail(`Could not generate a scraper for ${company.name}`);
+    throw error;
+  }
+}
+
+function renderGenerationResult(
+  context: CommandContext,
+  companyName: string,
+  result: GenerateResult,
+  spinner: ReturnType<CommandContext['ui']['spinner']>,
+): void {
+  if (result.status === 'generated') {
+    spinner.succeed(
+      `${companyName} — generated-${result.strategy} config, ${result.jobCount} jobs, ` +
+        `confidence ${result.confidence.toFixed(2)}`,
+    );
+    return;
+  }
+  if (result.status === 'skipped') {
+    spinner.succeed(`${companyName} remains registered without a generated scraper`);
+    context.ui.warn(`${result.reason} Run \`employed company generate "${companyName}"\` later.`);
+    return;
+  }
+  spinner.fail(
+    result.pendingPlaywright
+      ? `${companyName} requires browser rendering; queued for the Playwright unit`
+      : `${companyName} scraper failed validation`,
+  );
+  for (const reason of result.reasons) {
+    context.ui.warn(reason);
   }
 }
 
@@ -86,5 +142,15 @@ function listCompanies(context: CommandContext): void {
 
 function createCompanyService(context: CommandContext): CompanyService {
   const scrapeService = new ScrapeService(context.repos, context.http);
-  return new CompanyService(context.repos, context.detector, scrapeService);
+  const autoGenerate = context.config.loadApp().run.autoGenerateOnAdd;
+  const generateService = autoGenerate
+    ? new GenerateService(context.repos, context.http, context.ai)
+    : null;
+  return new CompanyService(
+    context.repos,
+    context.detector,
+    scrapeService,
+    generateService,
+    autoGenerate,
+  );
 }
