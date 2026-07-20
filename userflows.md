@@ -647,7 +647,7 @@ keyword edits are reused by another flow.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
 
-## Layer 4, Unit 2 — Report writer and `employed new`
+# Layer 4, Unit 2 — Report writer and `employed new`
 
 Run `npm run build` first. Every flow below creates and removes its own Employed workspace; report
 files and scanned jobs are never reused between flows.

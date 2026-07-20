@@ -1,3 +1,78 @@
+## Layer 4, Unit 2: Report Writer + `employed new` (§7.9)
+
+**What this is:** Turning stored, scored jobs into the actual morning deliverable — a dated markdown file (always) and an interactive terminal view. This is the first output a _human reading the report_ consumes, so the discipline is separating the **report data model** (pure, queryable, JSON-able) from its **renderers** (markdown, terminal, later email). One data shape, three presentations — so adding the email digest in Layer 6 is a renderer, not a rewrite.
+
+---
+
+**Deliverables:**
+
+**`src/report/model.ts` — the report data model (pure):**
+
+```typescript
+export interface DailyReport {
+  date: string; // YYYY-MM-DD
+  runStats: RunStats | null; // companies scanned, new, failures, healed/broken — null until run unit exists
+  newJobsByBand: Record<Band, ReportJob[]>; // A first
+  autoApplied: AutoAppliedUpdate[]; // empty until Gmail unit — reserve the slot now
+  needsAttention: AttentionItem[]; // broken scrapers, follow-ups — partial now, grows later
+}
+export interface ReportJob {
+  score: number;
+  band: Band;
+  company: string;
+  title: string;
+  location: string | null;
+  url: string;
+  ageDays: number;
+  titleOnly: boolean;
+}
+```
+
+The model reserves slots for things that don't exist yet (`autoApplied`, full `runStats`, follow-up nudges) so the renderers are written once against the final shape — later units _fill_ these arrays rather than restructuring the report. `null`/empty sections render as omitted, not as errors.
+
+**`src/report/build.ts` — `buildDailyReport(date, deps): DailyReport`:**
+
+Pure-ish assembler (reads DB, no network, no clock beyond the passed-in date): query `JobRepository.findNewSince(date)` (jobs with `first_seen = date`, status `open`), group by band, sort within band by score desc, compute `ageDays` from `first_seen` vs. a passed-in "now". Pull broken-scraper companies (`health = 'broken'`) into `needsAttention`. `runStats` reads the latest `runs` row if present, else `null`. The date and now are _parameters_ — never `new Date()` inside — so reports are reproducible and testable.
+
+**`src/report/render/markdown.ts` — `renderMarkdown(report): string`:**
+
+The §7.9 file structure, in order: header with run stats (or "manual scan" line when `runStats` null) → new jobs grouped by band (A first), each job a line with score, company, title, location, age, URL, and a `title-only` marker where flagged → auto-applied section (omitted when empty) → needs-attention section (broken scrapers, later follow-ups). Clean markdown a human reads in any viewer. The optional AI-written 3-sentence summary at the top is a **reserved hook** (`report.summary?: string`) — the DIGEST prompt and its generation land in Layer 6; here the renderer just prints it if present, skips it if not (§7.9: "skipped without complaint if unavailable").
+
+**`src/report/render/terminal.ts` — `renderTerminal(report, ui): void`:**
+
+Same model → the animated/colored terminal view for `employed new`. Band headers, color-coded bands, per-job rows via the UI table abstraction. Reuses the health/band color map from the UI layer. Plain fallback automatic (piped output).
+
+**`src/report/writer.ts` — `writeReport(report): string`:**
+
+Writes `renderMarkdown` to `~/.employed/reports/YYYY-MM-DD.md` (path from constants), returns the path. Idempotent — re-running a day overwrites cleanly (the daily `run` unit calls this; dedupe upstream means the content is stable).
+
+**`src/commands/new.ts` — `employed new [--band A,B] [--today] [--json]`:**
+
+- Default: build today's report, render to terminal.
+- `--band A,B` — filter to specific bands (filtering happens on the _model_ — a pure `filterReport(report, bands)` — so markdown/terminal/json all honor it identically).
+- `--today` — restrict to jobs first seen today (vs. the default which could show a rolling window; define the default window explicitly — spec implies today-first, so default = today, and a future `--since` extends it).
+- `--json` — `JSON.stringify(report)` to stdout, nothing else. This is trivial _because_ the model is already the serializable source of truth — the exact payoff of the "services return data, commands render" rule enforced since Layer 2. This JSON is also the contract the "Job Search HQ" dashboard consumes (§15), so treat its shape as semi-public.
+
+**Architectural notes:**
+
+- Three renderers, one model — if a renderer needs data the model doesn't have, the fix is to enrich the _model_, never to have a renderer query the DB directly. Renderers are pure `(model) → output`.
+- `buildDailyReport` takes `now`/`date` as inputs — this "no ambient clock" rule makes the whole report layer deterministic under test and is worth enforcing strictly.
+- The report is generated fresh from the DB each time, not stored-and-mutated — the DB is the source of truth, the report is a projection. (The `.md` file is an _export_ of that projection, not a second source.)
+
+**Acceptance criteria:**
+
+- `buildDailyReport` on a seeded `:memory:` DB produces correct band grouping, within-band score-desc ordering, correct `ageDays`, broken scrapers in needsAttention.
+- `renderMarkdown` output matches the §7.9 section order; a report with empty auto-applied/summary omits those sections cleanly; a title-only job shows its marker.
+- `--json` emits valid JSON that round-trips to the same `DailyReport`; `--band A` filters identically across json and terminal.
+- `writeReport` creates the dated file at the right path; re-running overwrites, doesn't duplicate.
+- Determinism: same seeded DB + same `now` → byte-identical markdown across runs.
+- Terminal render is colored in TTY, plain when piped.
+- Report layer tests import no http, no AI, no scheduler.
+
+---
+
+Say **next** for Layer 4, Unit 3: `employed run` orchestration + the scheduler (§9) — the tier-aware full loop, the `runs` observability row, and launchd/cron install.
+
 ## Layer 4, Unit 1: Scoring Engine (§7.6)
 
 **What this is:** The pure-TypeScript scoring core — identical math to the validated prototype, no AI, so 500 jobs score in milliseconds. This is the simplest unit in the whole build (it's a weighted substring counter) but it's load-bearing: it's what turns a pile of scraped postings into a _ranked_ morning report. The discipline here is keeping it pure and keeping `matched_kw` populated for the analytics that come in Layer 6.
