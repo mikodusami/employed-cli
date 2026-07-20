@@ -1,5 +1,6 @@
 /** Public surface for typed application configuration. */
-export { ConfigError, ConfigService } from './loader.js';
+export { ConfigService } from './loader.js';
+export { ConfigError } from '../util/errors.js';
 export { ScaffoldService } from './scaffold.js';
 export type { ScaffoldResult } from './scaffold.js';
 export type {
