@@ -2,6 +2,7 @@
 import type Database from 'better-sqlite3';
 import type { Command } from 'commander';
 
+import type { AiRunner } from '../ai/index.js';
 import type { ConfigService } from '../config/index.js';
 import type { Repositories } from '../db/index.js';
 import type { AtsDetector } from '../scrape/detect.js';
@@ -16,6 +17,7 @@ export interface CommandContext {
   repos: Repositories;
   detector: AtsDetector;
   http: HttpClient;
+  ai: AiRunner | null;
 }
 
 /** Registers one command and its options on the root program. */
