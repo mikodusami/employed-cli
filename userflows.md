@@ -54,6 +54,8 @@ if it already contains data you care about.
 4. Open the YAML files and confirm their comments explain the available settings.
 5. Confirm `keywords.yaml` includes `new grad: 6`, `machine learning: 2`, and
    `phd required: 6` in their respective title, description, and negative lists.
+6. Confirm `config.yaml` contains `ai.provider: claude` and documents `claude`, `codex`, and
+   `chatgpt` as valid provider values.
 
 ### Flow 2: Prove initialization is idempotent
 
