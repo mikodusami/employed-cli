@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import type { Page } from 'playwright';
 
 import { DefaultAiRunner } from '../src/ai/runner.js';
 import type { AiProvider, AiRequest, AiRunner, AiTask, ProviderStatus } from '../src/ai/types.js';
 import { AppConfigSchema } from '../src/config/schema.js';
 import { createDb, Repositories, type CompanyRow } from '../src/db/index.js';
+import { BrowserPool } from '../src/scrape/browser.js';
 import type { ScraperConfig } from '../src/scrape/config.js';
 import { GenerateService } from '../src/services/generate.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
@@ -89,6 +91,27 @@ test('null AI runner skips generation without changing the company', async () =>
   database.close();
 });
 
+test('sparse static HTML is recaptured and persisted as playwright', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const company = insertCompany(repositories);
+  const ai = new SequenceAi([goodConfig()]);
+  const browsers = new RenderedPool(fixture);
+  const result = await new GenerateService(
+    repositories,
+    new PageHttp('<html><body><div id="app"></div></body></html>'),
+    ai,
+    browsers,
+  ).generateFor(company);
+
+  assert.equal(result.status, 'generated');
+  assert.equal(result.status === 'generated' ? result.strategy : null, 'playwright');
+  assert.equal(repositories.companies.findByName('Fixture')?.scrape_method, 'generated-playwright');
+  assert.match(ai.calls[0]?.input ?? '', /Software Engineer/);
+  assert.equal(browsers.borrows, 2);
+  database.close();
+});
+
 class SequenceAi implements AiRunner {
   public readonly calls: Array<AiTask<unknown>> = [];
 
@@ -129,6 +152,25 @@ class PageHttp implements HttpClient {
 
   public async postJson(): Promise<FetchResult> {
     throw new Error('Unexpected POST request.');
+  }
+}
+
+class RenderedPool extends BrowserPool {
+  public borrows = 0;
+
+  public constructor(private readonly html: string) {
+    super();
+  }
+
+  public override async page<Result>(operation: (page: Page) => Promise<Result>): Promise<Result> {
+    this.borrows += 1;
+    const page = {
+      goto: async () => null,
+      content: async () => this.html,
+      waitForSelector: async () => ({}),
+      url: () => 'https://example.com/careers',
+    } as unknown as Page;
+    return operation(page);
   }
 }
 
