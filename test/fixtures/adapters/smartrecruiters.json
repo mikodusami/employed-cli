@@ -1,0 +1,19 @@
+{
+  "content": [
+    {
+      "id": "sr-201",
+      "name": "Associate Software Engineer",
+      "location": { "city": "Austin", "country": "US", "region": "Texas" },
+      "department": { "label": "Technology", "id": "tech" },
+      "unknownFutureField": true
+    },
+    {
+      "id": "sr-202",
+      "name": "Junior Product Engineer",
+      "location": { "country": "GB" }
+    }
+  ],
+  "totalFound": 2,
+  "limit": 100,
+  "offset": 0
+}
