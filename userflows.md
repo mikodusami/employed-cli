@@ -178,3 +178,46 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 2. Confirm the public Greenhouse, Ashby, and SmartRecruiters cases pass.
 3. Treat future failures here as possible provider/site drift; the normal fixture suite must remain
    deterministic and network-free.
+
+## Layer 3, Unit 2 — Greenhouse and Lever job adapters
+
+### Flow 1: Smoke-test real adapters during company add
+
+1. Add Anthropic from `https://job-boards.greenhouse.io/anthropic`.
+2. Add Highspot from `https://jobs.lever.co/highspot`.
+3. Run `employed company list`.
+4. Confirm both companies show health `ok`, a nonzero last yield, and a recent last success.
+
+### Flow 2: Scan and display new Lever jobs
+
+1. Run `employed scan --company Highspot --no-animation`.
+2. Confirm the summary reports a nonzero seen count and the same number of new jobs.
+3. Confirm the new-job table contains title, location, and URL columns.
+
+### Flow 3: Prove end-to-end deduplication
+
+1. Immediately run `employed scan --company Highspot --no-animation` again.
+2. Confirm it reports the same seen count and `0 new`.
+3. Confirm no new-job table is printed on the second run.
+
+### Flow 4: Distinguish an unsupported source
+
+1. Add Linear from `https://jobs.ashbyhq.com/linear` if it is not already registered.
+2. Run `employed scan --company Linear --no-animation`.
+3. Confirm the command reports that Linear was skipped because no Ashby source is implemented yet,
+   rather than reporting an adapter failure.
+
+### Flow 5: Verify contained adapter failures offline
+
+1. Run `npm test`.
+2. Confirm the garbage-slug adapter test returns a failed result, increments the company's failure
+   count, and does not throw or abort the suite.
+3. Confirm adapter fixtures, missing-field diagnostics, normalization, smoke health, transaction,
+   and two-run deduplication tests all pass while live checks remain skipped.
+
+### Flow 6: Run optional live adapter verification
+
+1. Run `EMPLOYED_LIVE_ATS_TESTS=1 npm test` with internet access.
+2. Confirm all fixture tests and opt-in public-board checks pass.
+3. Remember that live job counts can change; assert nonzero yield and correct provider, not a fixed
+   posting count.
