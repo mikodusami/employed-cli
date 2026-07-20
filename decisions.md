@@ -66,3 +66,12 @@ Application configuration uses an `ai` block with an explicit `claude`, `codex`,
 provider, defaulting to `claude`. This matches the already provider-neutral `ai_cache` table without
 introducing runner interfaces, provider implementations, or provider-dependent cache keys before
 their designated AI-runner layer.
+
+## 2026-07-19T20:29:18-04:00 — Ordered AI provider fallback contract
+
+The v2 remediation supersedes the single `ai.provider` selector with a master switch, independently
+enabled Claude and Codex providers, and a unique ordered preference list. Full defaults enable both
+providers and prefer Claude before Codex. Future runner behavior will skip disabled providers and
+fall through enabled providers in order; an AI master switch or no enabled providers means degraded
+AI-free operation. Cache keys are documented to include the provider, but no key construction or
+runner implementation is introduced in this remediation.
