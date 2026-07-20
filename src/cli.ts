@@ -10,7 +10,9 @@ import { register as registerImport } from './commands/import.js';
 import { register as registerInit } from './commands/init.js';
 import { register as registerNew } from './commands/new.js';
 import { register as registerRescore } from './commands/rescore.js';
+import { register as registerRun } from './commands/run.js';
 import { register as registerScan } from './commands/scan.js';
+import { register as registerSchedule } from './commands/schedule.js';
 import type { CommandContext } from './commands/types.js';
 import { VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
@@ -93,6 +95,8 @@ async function run(): Promise<void> {
   registerScan(program, context);
   registerRescore(program, context);
   registerNew(program, context);
+  registerRun(program, context);
+  registerSchedule(program, context);
   registerDoctor(program, context);
 
   try {
