@@ -40,7 +40,8 @@ export function distillDom(html: string): DistilledDom {
     }
     const candidate = $(element);
     const links = candidate.find('a[href]').length + (element.tagName === 'a' ? 1 : 0);
-    if (links === 0) {
+    // A singleton navigation link is not useful evidence of a repeated job-list region.
+    if (links < 2) {
       return;
     }
     const textLength = collapseWhitespace(candidate.text()).length;
