@@ -1,3 +1,86 @@
+## Layer 5, Unit 2: Gmail Sync via MCP — Fetch, AI Fallback, Ledger, Sync Modes
+
+**What this is:** Wiring the pure classifier (Unit 1) to real email. The AI CLI (Claude Code or Codex) does the _retrieval_ through its own Gmail MCP connection — so `employed` never touches Google credentials (§8.2, and the whole reason the delegation architecture exists). Rules classify the majority for free; the low-confidence tail batches to the AI. An idempotency ledger means the same email is never processed twice. Two modes: interactive (you approve) and cron (high-confidence auto-applies, rest defers).
+
+The discipline: retrieval and tail-classification are the _only_ AI in this unit, both go through the Unit-5 runner (budget/cache/validation for free), and the whole thing degrades to a clean no-op when AI is unavailable (§8.5).
+
+---
+
+**Deliverables:**
+
+**`prompts/email_fetch_v1.txt` — EMAIL_FETCH (§8.6-B):**
+
+The retrieval template. Query: `newer_than:{days}d` plus the ATS-and-subject query ported from the prototype's §5. Instructs the agent to paginate up to 250 threads via the Gmail MCP search tool and return **only** a JSON array of `{threadId, date, sender, subject, snippet}` — no prose. This is the `EmailMeta[]` contract from Unit 1, now produced for real.
+
+**`prompts/email_classify_v1.txt` — EMAIL_CLASSIFY (§8.6-C):**
+
+The tail classifier. Input: the array of low-confidence `{id, sender, subject, snippet}`. Output: `[{id, type, company, role}]` per §8.6-C's enum. Only the emails the rules couldn't place go here — the rules already handled the confident majority for free.
+
+**`src/gmail/fetch.ts` — `EmailFetcher`:**
+
+```typescript
+async fetch(days: number): Promise<EmailMeta[]>;
+```
+
+Builds an `AiTask<EmailMeta[]>` — templateId `email_fetch_v1`, schema = zod array of `EmailMeta`, `allowedTools: ['mcp__gmail__search_threads']` (Claude path). **Provider asymmetry handled inside the runner/provider** (from Unit 5): Claude gets the per-call tool grant; Codex relies on its `config.toml` MCP setup and the prompt naming the tool — the fetcher doesn't branch on provider, it just declares the tool it needs. `inputDigest` = hash of `days` + query (cache is short-lived here — email changes constantly — so this task should set a **cache bypass** flag: fetching is inherently fresh. Add `noCache?: boolean` to `AiTask`; EMAIL_FETCH sets it. Generation/scoring keep caching; retrieval opts out).
+
+**`src/gmail/ai-classify.ts` — `AiTailClassifier`:**
+
+```typescript
+async classify(lowConfidence: EmailMeta[]): Promise<Classification[]>;
+```
+
+`AiTask<Classification[]>`, templateId `email_classify_v1`. This one _does_ cache (same email → same classification is stable and safe), keyed on the batch digest. Empty input → returns `[]` without an AI call (don't spend budget on nothing).
+
+**`src/services/sync.ts` — `SyncService` (the six-stage pipeline, §7.7):**
+
+```typescript
+async run(mode: 'interactive' | 'cron', opts: { days: number }): Promise<SyncResult>;
+```
+
+1. **Query & fetch** — `EmailFetcher.fetch(days)` → `EmailMeta[]`.
+2. **Seen-filter** — drop threads already in `email_threads` (the ledger). Idempotency: a thread processed yesterday is skipped today. `EmailThreadRepository` (new).
+3. **Rule-classify** — `classify()` each unseen email (Unit 1). Split into `high` and `low` confidence.
+4. **AI tail** — `low` batch → `AiTailClassifier` (skipped entirely if `ctx.ai === null`; those emails stay unresolved and are reported, never guessed).
+5. **Extract & resolve** — `extractCompany`/`extractRole` per email; produce proposed CRM actions: create-application, or status-update on an existing application (matched by company + role).
+6. **Suggest or apply** by mode:
+   - **interactive** — render proposals; `@clack/prompts` multi-select to accept (new dependency lands here); accepted proposals write applications/events, then record the thread in the ledger. Rejected proposals still get **ledgered as processed** (so they don't re-surface every sync) but tagged with their classification for audit.
+   - **cron** — auto-apply only **high-confidence, exact-company-match status updates** (§7.7); everything else defers to the next interactive sync. Every auto-application is logged into the report's auto-applied section (the reserved slot from Layer 4 Unit 2 — now filled) so nothing happens invisibly. All fetched threads get ledgered regardless.
+
+**New dependency:** `@clack/prompts` (interactive multi-select).
+
+**`src/db/repositories/emailThreads.ts`, `applications.ts`, `events.ts`:**
+
+The ledger repo (`markProcessed`, `isSeen`, batch `seenThreadIds`) plus the first slices of the application/event repos that sync needs: `ApplicationRepository.findByCompanyRole`, `create`, `updateStatus`; `EventRepository.append`. Full CRM command coverage is Unit 3 — here we build only what sync writes. Every status change appends an `events` row (§5, append-only audit) — sync-driven updates are events too, tagged `email`.
+
+**`src/commands/sync.ts` — `employed sync [--days 30]`:**
+
+Interactive mode. Spinner through fetch (the one slow, AI-driven step) → rules run instantly → AI tail if needed → proposals table → multi-select → apply. Summary: N fetched, M new-processed, K applied, and how many deferred/unresolved. `ctx.ai === null` → clean message ("Gmail sync needs an AI provider with Gmail MCP configured — see doctor"), exit 0, no crash.
+
+**`run` integration:** the reserved Gmail hook in `RunService` (Layer 4 Unit 3) now calls `SyncService.run('cron', ...)` when AI + Gmail are configured. This is where the morning run's auto-applied section gets populated.
+
+**Architectural notes:**
+
+- **Rules first, AI second — always.** The rule classifier handles the validated majority at zero cost/latency; the AI only sees what fell through. Never route all email to AI "for consistency" — that burns budget and the 5-hour ChatGPT-plan window (the Codex caveat from the provider research) on emails the free rules already nail.
+- The ledger makes sync idempotent and re-runnable — the same property `run` relies on. A thread is processed exactly once, ever, even across interactive and cron syncs.
+- Cron mode's "high-confidence exact-match only, defer the rest" rule is a **safety boundary**: automated runs never make ambiguous CRM changes unattended. Auto-applied actions are always surfaced in the report. Encode this conservatively — when in doubt, defer.
+- Retrieval opts out of caching; classification opts in. Make the caching decision explicit per task, not global.
+
+**Acceptance criteria:**
+
+- Fake-AI fetch returning a fixture `EmailMeta[]` → pipeline runs end-to-end on `:memory:`; rules classify the confident ones, only low-confidence go to the (fake) AI tail classifier.
+- Ledger idempotency: running sync twice over the same fixture inbox → second run processes 0 new threads.
+- Cron mode: a high-confidence exact-match rejection auto-updates the application + appends an `email` event + lands in the report's auto-applied section; a low-confidence email is deferred, not applied.
+- Interactive mode (scriptable prompt fake): accepting a proposal writes the application/event; rejecting still ledgers the thread so it doesn't recur.
+- `ctx.ai === null`: `sync` and the cron hook both no-op cleanly with a notice; nothing written, exit 0.
+- EMAIL_FETCH task bypasses cache (two fetches → two AI calls); EMAIL_CLASSIFY uses cache (same batch → one call); empty low-confidence batch → zero AI calls.
+- Every CRM write from sync appends a corresponding `events` row.
+- Suite offline; the only AI is the fake runner; Gmail MCP is never actually contacted in tests.
+
+---
+
+Say **next** for Layer 5, Unit 3: the CRM commands — `apply`, `board`, `app`, `note`, `move`, `dismiss`.
+
 ## Layer 5, Unit 1: Rule-Based Email Classifier + Company Extractor
 
 **What this is:** The pure-TypeScript core of Gmail sync (§7.7) — the ordered regex classifier and two-tier company extractor, ported _as-is_ from the validated prototype (11/11 classification, 9/9 extraction on the owner's real inbox). No Gmail, no AI, no network — this unit is just the deterministic brain that decides "what kind of email is this and who's it from," fed by fixtures. The AI-powered _retrieval_ and the ambiguous-tail fallback come next unit; this is the free, fast, known-good layer that handles the majority.
