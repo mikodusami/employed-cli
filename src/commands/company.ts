@@ -2,9 +2,8 @@
 import { Option, type Command } from 'commander';
 
 import type { Tier } from '../db/index.js';
-import { CompanyService } from '../services/company.js';
-import { GenerateService, type GenerateResult } from '../services/generate.js';
-import { ScrapeService } from '../services/scrape.js';
+import type { GenerateResult } from '../services/generate.js';
+import { ScrapeRuntime } from '../services/scrape-runtime.js';
 import { ValidationError } from '../util/errors.js';
 import { relativeTime } from '../util/time.js';
 import type { CommandContext } from './types.js';
@@ -44,9 +43,9 @@ async function addCompany(
   options: AddOptions,
 ): Promise<void> {
   const spinner = context.ui.spinner(`Adding ${name} and checking its careers site`).start();
+  const runtime = createRuntime(context);
   try {
-    const service = createCompanyService(context);
-    const result = await service.add({ name, url: options.url, tier: options.tier });
+    const result = await runtime.companies.add({ name, url: options.url, tier: options.tier });
     if (result.outcome === 'duplicate') {
       spinner.succeed(`${result.company.name} is already registered; no changes made`);
       return;
@@ -71,6 +70,8 @@ async function addCompany(
   } catch (error: unknown) {
     spinner.fail(`Could not add ${name}`);
     throw error;
+  } finally {
+    await runtime.close();
   }
 }
 
@@ -82,14 +83,15 @@ async function generateCompany(context: CommandContext, name: string): Promise<v
   const spinner = context.ui
     .spinner(`Generating and validating a scraper for ${company.name}`)
     .start();
+  const runtime = createRuntime(context);
   try {
-    const result = await new GenerateService(context.repos, context.http, context.ai).generateFor(
-      company,
-    );
+    const result = await runtime.generator.generateFor(company);
     renderGenerationResult(context, company.name, result, spinner);
   } catch (error: unknown) {
     spinner.fail(`Could not generate a scraper for ${company.name}`);
     throw error;
+  } finally {
+    await runtime.close();
   }
 }
 
@@ -122,8 +124,7 @@ function renderGenerationResult(
 }
 
 function listCompanies(context: CommandContext): void {
-  const service = createCompanyService(context);
-  const companies = service.list();
+  const companies = context.repos.companies.list();
   if (companies.length === 0) {
     context.ui.info('No companies yet. Run `employed company add` or `employed import`.');
     return;
@@ -142,17 +143,12 @@ function listCompanies(context: CommandContext): void {
   );
 }
 
-function createCompanyService(context: CommandContext): CompanyService {
-  const scrapeService = new ScrapeService(context.repos, context.http);
-  const autoGenerate = context.config.loadApp().run.autoGenerateOnAdd;
-  const generateService = autoGenerate
-    ? new GenerateService(context.repos, context.http, context.ai)
-    : null;
-  return new CompanyService(
-    context.repos,
-    context.detector,
-    scrapeService,
-    generateService,
-    autoGenerate,
-  );
+function createRuntime(context: CommandContext): ScrapeRuntime {
+  return new ScrapeRuntime({
+    repositories: context.repos,
+    http: context.http,
+    detector: context.detector,
+    ai: context.ai,
+    config: context.config.loadApp(),
+  });
 }
