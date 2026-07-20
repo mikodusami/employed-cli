@@ -9,6 +9,9 @@ import os from 'node:os';
 /** Current CLI version, kept in sync with package.json. */
 export const VERSION = '0.1.0';
 
+/** Honest identifier sent with employed HTTP requests. */
+export const HTTP_USER_AGENT = 'employed/1.0 (+personal job search tool)';
+
 /** Root directory for all user-specific employed data. */
 export const EMPLOYED_DIR = path.join(os.homedir(), '.employed');
 
