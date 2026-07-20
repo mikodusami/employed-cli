@@ -6,11 +6,11 @@ import type { CompanyRow, Health, ScrapeMethod, Tier } from '../types.js';
 /** Values required to create a company. */
 export interface InsertCompanyInput {
   name: string;
-  tier: Tier;
+  tier?: Tier;
   careers_url: string;
   scrape_method?: ScrapeMethod;
-  scrape_slug?: string | null;
-  scrape_config?: string | null;
+  slug?: string | null;
+  scraper_config?: string | null;
 }
 
 interface CompanyIdParameter {
@@ -43,10 +43,10 @@ export class CompanyRepository {
   public constructor(database: Database.Database) {
     this.insertStatement = database.prepare(`
       INSERT INTO companies (
-        name, tier, careers_url, scrape_method, scrape_slug, scrape_config
+        name, tier, careers_url, scrape_method, slug, scraper_config, created_at
       ) VALUES (
-        @name, @tier, @careers_url,
-        COALESCE(@scrape_method, 'unknown'), @scrape_slug, @scrape_config
+        @name, COALESCE(@tier, 'B'), @careers_url,
+        COALESCE(@scrape_method, 'unknown'), @slug, @scraper_config, CURRENT_TIMESTAMP
       )
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM companies WHERE id = @id');
@@ -54,31 +54,25 @@ export class CompanyRepository {
     this.listStatement = database.prepare('SELECT * FROM companies ORDER BY tier, name');
     this.updateMethodStatement = database.prepare(`
       UPDATE companies
-      SET scrape_method = @method,
-          scrape_slug = @slug,
-          scrape_config = @config,
-          updated_at = CURRENT_TIMESTAMP
+      SET scrape_method = @method, slug = @slug, scraper_config = @config
       WHERE id = @id
     `);
     this.updateHealthStatement = database.prepare(`
       UPDATE companies
-      SET health = @health, updated_at = CURRENT_TIMESTAMP
+      SET health = @health
       WHERE id = @id
     `);
     this.recordSuccessStatement = database.prepare(`
       UPDATE companies
-      SET health = 'healthy',
-          last_success_at = CURRENT_TIMESTAMP,
+      SET health = 'ok',
+          last_success = CURRENT_TIMESTAMP,
           consecutive_failures = 0,
-          last_yield_count = @yieldCount,
-          updated_at = CURRENT_TIMESTAMP
+          last_yield = @yieldCount
       WHERE id = @id
     `);
     this.recordFailureStatement = database.prepare(`
       UPDATE companies
-      SET last_failure_at = CURRENT_TIMESTAMP,
-          consecutive_failures = consecutive_failures + 1,
-          updated_at = CURRENT_TIMESTAMP
+      SET consecutive_failures = consecutive_failures + 1
       WHERE id = @id
     `);
   }
@@ -87,9 +81,10 @@ export class CompanyRepository {
   public insert(input: InsertCompanyInput): CompanyRow {
     const parameters: InsertCompanyInput = {
       ...input,
+      tier: input.tier ?? 'B',
       scrape_method: input.scrape_method ?? 'unknown',
-      scrape_slug: input.scrape_slug ?? null,
-      scrape_config: input.scrape_config ?? null,
+      slug: input.slug ?? null,
+      scraper_config: input.scraper_config ?? null,
     };
     const result = this.insertStatement.run(parameters);
     return this.requireById(Number(result.lastInsertRowid));
