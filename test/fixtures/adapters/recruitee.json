@@ -1,0 +1,19 @@
+{
+  "offers": [
+    {
+      "id": 301,
+      "title": "Graduate Software Engineer",
+      "careers_url": "https://example.recruitee.com/o/graduate-software-engineer",
+      "location": "Remote",
+      "department": "Engineering",
+      "description": "<p>Learn and ship software.</p>",
+      "unknownFutureField": true
+    },
+    {
+      "id": 302,
+      "title": "Associate Product Manager",
+      "careers_url": "https://example.recruitee.com/o/associate-product-manager",
+      "department": { "name": "Product" }
+    }
+  ]
+}
