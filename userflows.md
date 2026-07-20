@@ -705,7 +705,7 @@ files and scanned jobs are never reused between flows.
 7. Run `rm -rf "$EMPLOYED_DIR"`.
 8. Run `unset EMPLOYED_DIR`.
 
-## Layer 4, Unit 3 — `employed run` orchestration and scheduler
+# Layer 4, Unit 3 — `employed run` orchestration and scheduler
 
 Run `npm run build` first. Every flow below creates and removes its own Employed workspace; no
 companies, jobs, runs, or lock files are reused between flows. Because `export` only affects the
@@ -873,3 +873,77 @@ step fails.
    installed.
 10. Run `rm -rf "$EMPLOYED_DIR"`.
 11. Run `unset EMPLOYED_DIR`.
+
+# Layer 5, Unit 1 — Rule-based email classifier and company extractor
+
+This unit has no CLI surface yet and touches no `$EMPLOYED_DIR` state — `classify` and
+`extractCompany`/`extractRole` are pure functions with zero I/O, consumed only by tests until Layer
+5, Unit 2 wires up real Gmail sync. **No validated prototype existed to port** (see decisions.md):
+the rules and the fixtures below, including the three named example cases from the spec, are
+original and structurally faithful to the layer spec, not literal real-inbox-validated data. Flow 6
+below is how you start turning these into the real thing.
+
+### Flow 1: Run the classification fixture suite
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Confirm `classification fixture suite passes 11/11` is among the passing tests, with zero
+   failures anywhere in the gmail-related tests.
+4. Open `test/fixtures/gmail/classification.json` and confirm it has exactly 11 entries spanning
+   `ignore`, `rejected`, `offer`, `oa`, `interview`, `applied`, and one `null` fall-through.
+
+### Flow 2: Prove reject-before-confirm ordering explicitly
+
+1. Run `npm test`.
+2. Confirm `a rejection classifies as rejected even though it also reads like a confirmation`
+   passes — its fixture email's snippet contains both "thank you for your interest" (an
+   applied-style phrase) and "move forward with other candidates" (a rejection phrase), and the
+   result must be `rejected`.
+3. Open `src/gmail/classify.ts` and confirm the `RULES` array lists `rejected` before `applied`,
+   with a comment explaining why the order is load-bearing.
+
+### Flow 3: Prove ignore-first ordering explicitly
+
+1. Run `npm test`.
+2. Confirm `a job-alert digest classifies as ignore even when its subject reads as interview-ish`
+   passes — its fixture's subject line is deliberately worded ("5 new interview-ready jobs
+   matching your search") to look like an interview email, and the sender is a known job-alert
+   address (`jobalerts-noreply@linkedin.com`).
+3. Confirm the result is `ignore`, not `interview`.
+
+### Flow 4: Prove a fall-through is distinct from a deliberate ignore
+
+1. Run `npm test`.
+2. Confirm `a fall-through email is low confidence and null, not silently ignore` passes.
+3. Open `src/gmail/types.ts` and confirm `Classification.type` is `EmailClass | null`, and that
+   `confidence: 'low'` only ever appears paired with `type: null`.
+
+### Flow 5: Run the extraction fixture suite and the three named tricky cases
+
+1. Run `npm test`.
+2. Confirm `extraction fixture suite passes 9/9` passes, alongside the three dedicated tests naming
+   Red Hat, Federal Reserve Bank of Atlanta, and Whatnot.
+3. Open `test/fixtures/gmail/extraction.json` and confirm `rb@myworkday.com` maps to
+   `Federal Reserve Bank of Atlanta` and `redhat@myworkday.com` maps to `Red Hat` via the tier-2
+   sender lookup, while the Whatnot case resolves via the tier-1 Ashby subject line instead.
+4. Confirm `extraction never imports the classifier` and `classification never imports company or
+   role extraction` both pass, proving the two modules have no cross-dependency.
+
+### Flow 6: Validate the rules against one of your own real emails
+
+Since no validated prototype exists yet, this flow is how you start building one. It edits fixture
+files directly rather than touching `$EMPLOYED_DIR`.
+
+1. Pick one real application-status email from your inbox (any category — confirmation, rejection,
+   interview request, offer, OA, or a job-alert digest you'd expect to be ignored).
+2. Add a new entry to `test/fixtures/gmail/classification.json` (or `extraction.json` for a company
+   you'd expect to be recognized) with its real `sender`, `subject`, and `snippet`, and the
+   `expected`/`expectedCompany` value you believe is correct. Redact anything you don't want
+   committed to this repository (names, personal details in the snippet) before saving.
+3. Run `npm test`.
+4. If it passes, the existing rules already generalize to this real case — leave the fixture in
+   place as a small step toward real validation.
+5. If it fails, that's a genuine gap: note it in `decisions.md` under the "must be reconciled later"
+   entry, and either adjust the relevant pattern in `classify.ts`/`extract-company.ts` (re-running
+   `npm test` to confirm nothing else regresses) or leave the fixture as a known failing case to
+   revisit once more real samples are collected.

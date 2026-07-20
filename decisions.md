@@ -384,3 +384,41 @@ Per the layer's observability note, `DoctorService` now also reads `repositories
 reports started time, duration, new-job count, and failure count — a small addition to an existing
 command rather than a new one, since `doctor` already owns environment diagnostics and the `runs`
 table only becomes meaningful once this unit exists.
+
+## 2026-07-20T15:43:05-04:00 — No prototype existed to port; the classifier/extractor are original
+
+The layer spec for the email classifier and company extractor says explicitly to port an existing,
+real-inbox-validated prototype (11/11 classification, 9/9 extraction, including named cases like Red
+Hat and Federal Reserve Bank of Atlanta via Workday, and Whatnot via an Ashby subject). No such
+prototype exists anywhere in this repository or its history. Asked directly, the owner confirmed none
+exists yet. Rather than fabricate rules and claim they came from real-inbox validation, `classify.ts`
+and `extract-company.ts` are original code, structurally faithful to the spec's ordered pipeline and
+two-tier extraction shape, with the three named example cases reproduced as clearly-labeled invented
+fixtures (see each file's header comment) rather than as verified real data.
+
+This must be reconciled later: if the owner's real prototype or real inbox samples surface, the rules
+and fixtures here should be replaced with the validated versions, and the acceptance bar becomes real
+11/11 and 9/9 rather than structurally-equivalent invented cases.
+
+## 2026-07-20T15:43:05-04:00 — Fall-through classification is `type: null`, not a fourth confidence
+
+The spec's own `Classification` sketch types `type` as non-nullable `EmailClass`, but its prose
+requires a fall-through (no rule matched) to be distinguishable from a deliberate `ignore` and to
+route to AI classification in a later unit. `type` is widened to `EmailClass | null`; a rule match
+always returns a concrete type with `confidence: 'high'`, and a fall-through is exactly
+`{ type: null, confidence: 'low' }`. No rule ever produces `confidence: 'low'` — that combination is
+reserved for "nothing matched," keeping the confidence field a pure signal of "did a rule fire."
+
+## 2026-07-20T15:43:05-04:00 — Two-tier extraction is ordered subject-first, not domain-gated
+
+`extractCompany` tries subject-pattern extraction (tier 1) against every email regardless of sender,
+then falls back to a sender-domain/local-part lookup table (tier 2) only if tier 1 found nothing. The
+spec frames Ashby as an *example* of tier 1, not its only applicable domain, so tier 1 is written as a
+general phrase-pattern matcher (covers Greenhouse, Lever, and generic ATS subjects too) rather than
+gated to a hardcoded domain allowlist. Tier 2 exists specifically for platforms like Workday whose
+sending domain and subject line never reveal the real company — only a per-tenant local part does —
+and a miss there returns `null` rather than guessing.
+
+Classifier and extractor remain fully independent: neither module imports the other, enforced by a
+source-grep test in each suite, matching the spec's "classification doesn't depend on company,
+extraction doesn't depend on type."
