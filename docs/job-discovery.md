@@ -53,6 +53,19 @@ When a company is added, employed fetches its careers page and checks URL/HTML s
 Known ATS sources use deterministic APIs. They are the cheapest, fastest, and most reliable path.
 Workday and SmartRecruiters pagination is bounded to prevent infinite sources.
 
+Detection first checks the case-insensitive company name in `known_ats.yaml`. A match selects that
+adapter without fetching the careers page. Otherwise, employed performs a bounded static crawl:
+
+1. Inspect the supplied careers page (depth 0).
+2. Rank and inspect at most two likely job-browse links (depth 1).
+3. From the strongest browse page, inspect likely job-detail links (depth 2).
+4. Stop after five total page requests even when a site exposes many links.
+
+Relative links are resolved against their page, duplicates and social/mail links are ignored, and
+no headless browser is launched merely for detection. Detection output records the matching depth
+and URL path so surprising results can be diagnosed. Use a verified `known_ats.yaml` entry when a
+site cannot expose its ATS within this intentionally small crawl budget.
+
 ## Generated scrapers
 
 If no ATS matches and AI is enabled, employed can generate a data-only scraper configuration:
