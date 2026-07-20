@@ -1,5 +1,7 @@
 /** Orchestrates source lookup, canonical job persistence, and scraper health outcomes. */
+import type { KeywordsFile } from '../config/schema.js';
 import type { CompanyRow, JobRow, Repositories, ScrapeMethod } from '../db/index.js';
+import { scoreJob } from '../score/engine.js';
 import { getSource } from '../scrape/adapters/index.js';
 import type { BrowserPool } from '../scrape/browser.js';
 import { toJobInput } from '../scrape/normalize.js';
@@ -28,6 +30,7 @@ export interface SmokeResult {
 
 export interface ScrapeServiceOptions {
   browsers?: BrowserPool;
+  keywords?: KeywordsFile;
   healing?: {
     service: HealService;
     budget: HealBudget;
@@ -79,7 +82,17 @@ export class ScrapeService {
       const newJobs = this.repositories.withTransaction(() => {
         const insertedJobs: JobRow[] = [];
         for (const posting of postings) {
-          const upsert = this.repositories.jobs.upsert(toJobInput(posting, company.id, today));
+          const input = toJobInput(posting, company.id, today);
+          const scored = scoreJob(
+            { title: input.title, description: input.description },
+            this.options.keywords ?? EMPTY_KEYWORDS,
+          );
+          const upsert = this.repositories.jobs.upsert({
+            ...input,
+            score: scored.score,
+            band: scored.band,
+            matched_kw: JSON.stringify(scored.matchedKeywords),
+          });
           if (upsert.isNew) {
             insertedJobs.push(upsert.job);
           }
@@ -163,6 +176,12 @@ export class ScrapeService {
     }
   }
 }
+
+const EMPTY_KEYWORDS: KeywordsFile = {
+  title: {},
+  description: {},
+  negative: {},
+};
 
 function isValidPosting(posting: RawPosting): boolean {
   if (posting.title.trim().length === 0) {
