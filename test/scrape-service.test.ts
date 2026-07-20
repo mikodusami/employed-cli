@@ -45,13 +45,13 @@ test('scrapeCompany inserts once then refreshes the same posting on rerun', asyn
 test('scrapeCompany returns a typed skipped result when no adapter exists', async () => {
   const database = createDb(':memory:');
   const repositories = new Repositories(database);
-  const company = createCompany(repositories, 'ashby', 'not-built-yet');
+  const company = createCompany(repositories, 'generated-static', 'not-built-yet');
   const result = await new ScrapeService(repositories, new FixtureHttpClient('')).scrapeCompany(
     company,
   );
 
   assert.equal(result.status, 'skipped');
-  assert.match(result.reason ?? '', /No source for ashby/);
+  assert.match(result.reason ?? '', /No source for generated-static/);
   database.close();
 });
 
