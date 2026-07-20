@@ -1,5 +1,5 @@
 /** Loads, validates, and memoizes typed YAML configuration. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
@@ -26,7 +26,12 @@ export class ConfigService {
 
   /** Loads the main application configuration. */
   public loadApp(): AppConfig {
-    this.appConfig ??= this.load(path.join(this.baseDirectory, 'config.yaml'), AppConfigSchema);
+    const filePath = path.join(this.baseDirectory, 'config.yaml');
+    if (!this.appConfig) {
+      const config = this.load(filePath, AppConfigSchema);
+      this.validateEmailCredential(config, filePath);
+      this.appConfig = config;
+    }
     return this.appConfig;
   }
 
@@ -77,6 +82,29 @@ export class ConfigService {
       throw new ConfigError(filePath, `YAML could not be parsed: ${String(error)}`, {
         cause: error,
       });
+    }
+  }
+
+  private validateEmailCredential(config: AppConfig, filePath: string): void {
+    if (!config.email.enabled) {
+      return;
+    }
+    const environmentPassword = process.env.EMPLOYED_SMTP_PASSWORD?.trim();
+    const filePassword = config.email.smtp.password.trim();
+    if (!environmentPassword && !filePassword) {
+      throw new ConfigError(
+        filePath,
+        'email.smtp.password: set EMPLOYED_SMTP_PASSWORD (recommended) or configure a password',
+      );
+    }
+    if (filePassword) {
+      const permissions = statSync(filePath).mode & 0o777;
+      if (permissions !== 0o600) {
+        throw new ConfigError(
+          filePath,
+          'email.smtp.password: config.yaml must use mode 600; run `chmod 600 ~/.employed/config.yaml`',
+        );
+      }
     }
   }
 }
