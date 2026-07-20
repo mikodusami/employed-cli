@@ -44,7 +44,9 @@ export function renderMarkdown(report: DailyReport): string {
   if (report.autoApplied.length > 0) {
     lines.push('## Auto-applied', '');
     for (const update of report.autoApplied) {
-      lines.push(`- **${escapeText(update.company)}** — ${escapeText(update.role)}: ${update.status}`);
+      const company = escapeText(update.company);
+      const role = escapeText(update.role);
+      lines.push(`- **${company}** — ${role}: ${update.status}`);
     }
     lines.push('');
   }
