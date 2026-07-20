@@ -20,6 +20,7 @@ test('schemas populate every top-level configuration section from an empty mappi
       jitterMs: { min: 500, max: 1500 },
       maxRetries: 3,
       respectRobots: true,
+      autoGenerateOnAdd: true,
     },
     email: { enabled: false },
     ai: {
