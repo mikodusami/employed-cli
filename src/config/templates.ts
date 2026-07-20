@@ -12,7 +12,8 @@ email:
   # Email integration is configured in a later layer.
   enabled: false
 
-claude:
+ai:
+  provider: claude # claude | codex | chatgpt; selects which CLI binary employed shells out to.
   # Allow Claude-assisted processing when that integration is configured.
   enabled: true
   # Safety limit for AI calls during one run.
