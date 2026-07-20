@@ -56,6 +56,41 @@ const HqBackupSchema = z
     seen: z.array(SeenSchema).default([]),
   })
   .passthrough();
+const CompanyRowSchema = z.object({
+  id: z.number().int(), name: z.string(), slug: z.string().nullable(), careers_url: z.string(),
+  tier: z.enum(['A', 'B', 'C']),
+  scrape_method: z.enum([
+    'greenhouse', 'lever', 'ashby', 'workday', 'smartrecruiters', 'recruitee',
+    'generated-static', 'generated-playwright', 'unknown', 'manual',
+  ]),
+  scraper_config: z.string().nullable(), health: z.enum(['ok', 'degraded', 'broken', 'untested']),
+  consecutive_failures: z.number().int(), last_success: z.string().nullable(),
+  last_yield: z.number().int().nullable(), created_at: z.string(),
+});
+const JobRowSchema = z.object({
+  id: z.number().int(), company_id: z.number().int(), dedupe_key: z.string(), title: z.string(),
+  url: z.string(), location: z.string().nullable(), department: z.string().nullable(),
+  description: z.string().nullable(), score: z.number().int().nullable(),
+  band: z.enum(['A', 'B', 'C', 'D']).nullable(), matched_kw: z.string().nullable(),
+  status: z.enum(['open', 'closed', 'dismissed']), first_seen: z.string(), last_seen: z.string(),
+});
+const ApplicationRowSchema = z.object({
+  id: z.number().int(), job_id: z.number().int().nullable(), company_name: z.string(),
+  role: z.string().nullable(), status: StatusSchema, applied_at: z.string().nullable(),
+  resume_version: z.string().nullable(), notes: z.string().nullable(),
+  first_response_at: z.string().nullable(), last_activity_at: z.string().nullable(),
+  created_at: z.string(),
+});
+const EventRowSchema = z.object({
+  id: z.number().int(), application_id: z.number().int(), at: z.string(),
+  type: z.enum(['applied', 'oa', 'interview', 'offer', 'rejected', 'note', 'email']),
+  note: z.string().nullable(),
+});
+const NativeSnapshotSchema = z.object({
+  version: z.literal(1), exportedAt: z.string(), companies: z.array(CompanyRowSchema),
+  jobs: z.array(JobRowSchema), applications: z.array(ApplicationRowSchema),
+  events: z.array(EventRowSchema),
+});
 
 export type HqBackup = z.infer<typeof HqBackupSchema>;
 
@@ -65,6 +100,7 @@ export interface ImportHqSummary {
   eventsCreated: number;
   threads: { created: number; skipped: number };
   scoringKeysAdded: number;
+  native: { companies: number; jobs: number };
 }
 
 export interface ImportHqOptions {
@@ -90,6 +126,10 @@ export class ImportHqService {
   }
 
   public import(value: unknown, options: ImportHqOptions = {}): ImportHqSummary {
+    const native = NativeSnapshotSchema.safeParse(value);
+    if (native.success) {
+      return this.importNative(native.data, Boolean(options.dryRun));
+    }
     const backup = this.parse(value);
     const plan = this.plan(backup, Boolean(options.dryRun));
     if (options.dryRun) {
@@ -107,6 +147,40 @@ export class ImportHqService {
       }
       return plan.summary;
     });
+  }
+
+  private importNative(
+    snapshot: z.infer<typeof NativeSnapshotSchema>,
+    dryRun: boolean,
+  ): ImportHqSummary {
+    const existingCompanies = new Set(
+      this.dependencies.repositories.companies.list().map((row) => row.id),
+    );
+    const existingJobs = new Set(this.dependencies.repositories.jobs.list().map((row) => row.id));
+    const existingApplications = new Set(
+      this.dependencies.repositories.applications.list().map((row) => row.id),
+    );
+    const existingEvents = new Set(
+      this.dependencies.repositories.events.list().map((row) => row.id),
+    );
+    const summary: ImportHqSummary = {
+      dryRun,
+      native: {
+        companies: snapshot.companies.filter((row) => !existingCompanies.has(row.id)).length,
+        jobs: snapshot.jobs.filter((row) => !existingJobs.has(row.id)).length,
+      },
+      applications: {
+        created: snapshot.applications.filter((row) => !existingApplications.has(row.id)).length,
+        merged: 0,
+        skipped: snapshot.applications.filter((row) => existingApplications.has(row.id)).length,
+      },
+      eventsCreated: snapshot.events.filter((row) => !existingEvents.has(row.id)).length,
+      threads: { created: 0, skipped: 0 }, scoringKeysAdded: 0,
+    };
+    if (!dryRun) {
+      this.dependencies.repositories.restoreSnapshot(snapshot);
+    }
+    return summary;
   }
 
   private plan(backup: HqBackup, dryRun: boolean): ImportPlan {
@@ -129,6 +203,7 @@ export class ImportHqService {
       keywords: keywords.value,
       summary: {
         dryRun,
+        native: { companies: 0, jobs: 0 },
         applications: {
           created: newApplications.length,
           merged: 0,
