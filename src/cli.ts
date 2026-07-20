@@ -56,6 +56,7 @@ async function run(): Promise<void> {
       getHttp(),
       new RobotsGate(getHttp()),
       config.loadApp().run.respectRobots,
+      config.loadKnownAts(),
     ));
   const getAi = (): AiRunner | null => {
     if (!isAiInitialized) {
