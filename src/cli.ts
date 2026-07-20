@@ -31,11 +31,6 @@ import { createUI } from './ui/index.js';
 import { AppError } from './util/errors.js';
 import { buildHttpClient, type HttpClient, RobotsGate } from './util/http.js';
 
-interface ProgramOptions {
-  animation: boolean;
-  verbose: boolean;
-}
-
 /** Builds and executes the employed CLI. */
 async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
@@ -119,13 +114,16 @@ async function run(): Promise<void> {
   registerImportHq(program, context);
   registerDoctor(program, context);
 
+  if (process.argv.length === 2) {
+    if (isAnimationEnabled && process.stdout.isTTY) {
+      ui.banner();
+    }
+    program.outputHelp();
+    return;
+  }
+
   try {
     await program.parseAsync(process.argv);
-
-    const options = program.opts<ProgramOptions>();
-    if (program.args.length === 0) {
-      createUI(options.animation).banner();
-    }
   } finally {
     database?.close();
   }
