@@ -16,7 +16,15 @@ test('schemas populate every top-level configuration section from an empty mappi
   assert.deepEqual(AppConfigSchema.parse({}), {
     run: { time: '07:00', concurrency: 4 },
     email: { enabled: false },
-    ai: { provider: 'claude', enabled: true, maxCallsPerRun: 10 },
+    ai: {
+      enabled: true,
+      preference: ['claude', 'codex'],
+      providers: {
+        claude: { enabled: true },
+        codex: { enabled: true },
+      },
+      maxCallsPerRun: 10,
+    },
   });
   assert.deepEqual(CompaniesFileSchema.parse({}), {
     defaults: { tier: 'B' },
@@ -37,7 +45,7 @@ test('scaffold templates validate and existing user files are preserved', () => 
 
   const service = new ConfigService(baseDirectory);
   assert.equal(service.loadApp().run.concurrency, 4);
-  assert.equal(service.loadApp().ai.provider, 'claude');
+  assert.deepEqual(service.loadApp().ai.preference, ['claude', 'codex']);
   assert.deepEqual(service.loadCompanies().companies, []);
   const keywords = service.loadKeywords();
   assert.equal(keywords.title['new grad'], 6);
@@ -90,4 +98,18 @@ test('blank YAML files parse to fully populated defaults', () => {
   assert.equal(service.loadApp().run.time, '07:00');
   assert.deepEqual(service.loadCompanies().companies, []);
   assert.deepEqual(service.loadKeywords().negative, {});
+});
+
+test('AI provider settings reject duplicate preferences and accept partial overrides', () => {
+  assert.throws(
+    () => AppConfigSchema.parse({ ai: { preference: ['claude', 'claude'] } }),
+    /AI provider preference entries must be unique/,
+  );
+
+  const config = AppConfigSchema.parse({
+    ai: { providers: { codex: { enabled: false } } },
+  });
+  assert.equal(config.ai.providers.claude.enabled, true);
+  assert.equal(config.ai.providers.codex.enabled, false);
+  assert.deepEqual(config.ai.preference, ['claude', 'codex']);
 });
