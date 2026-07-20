@@ -52,7 +52,8 @@ npm link
 employed init
 ```
 
-Initialization creates `~/.employed`, writes the three commented YAML files, creates `reports/` and
+Initialization creates `~/.employed`, writes four commented YAML files (including the optional
+`known_ats.yaml` override map), creates `reports/` and
 `logs/`, migrates SQLite, and validates the templates. It is idempotent: rerunning it fills missing
 files but does not overwrite your edits.
 
