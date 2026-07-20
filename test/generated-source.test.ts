@@ -141,7 +141,8 @@ function renderedPage(initialHtml: string, expandedHtml: string) {
     url: () => currentUrl,
     locator: (selector: string) => ({
       first: () => ({
-        count: async () => (selector === 'button.more' && html.includes('button class="more"') ? 1 : 0),
+        count: async () =>
+          selector === 'button.more' && html.includes('button class="more"') ? 1 : 0,
         isVisible: async () => html.includes('button class="more"'),
         click: async () => {
           clicks += 1;
