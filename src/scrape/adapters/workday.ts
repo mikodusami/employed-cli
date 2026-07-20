@@ -9,7 +9,6 @@ import type { RawPosting, ScrapeSource } from '../types.js';
 
 const PAGE_LIMIT = 20;
 const MAX_PAGES = 25;
-const PAGE_DELAY_MS = 300;
 
 const WorkdayEnvelopeSchema = z.object({
   total: z.number().int().nonnegative(),
@@ -29,10 +28,7 @@ const WorkdayEnvelopeSchema = z.object({
 export class WorkdayAdapter implements ScrapeSource {
   public readonly method = 'workday' as const;
 
-  public constructor(
-    private readonly http: HttpClient,
-    private readonly pageDelayMs = PAGE_DELAY_MS,
-  ) {}
+  public constructor(private readonly http: HttpClient) {}
 
   public async fetchPostings(company: CompanyRow): Promise<RawPosting[]> {
     if (!company.slug) {
@@ -64,8 +60,6 @@ export class WorkdayAdapter implements ScrapeSource {
       ) {
         break;
       }
-      // TODO(politeness-unit): move inter-request spacing into the shared HTTP decorator.
-      await delay(this.pageDelayMs);
     }
     return postings;
   }
@@ -113,8 +107,4 @@ function parseEnvelope(companyName: string, body: string): z.infer<typeof Workda
       cause: error,
     });
   }
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
