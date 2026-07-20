@@ -1436,8 +1436,8 @@ afterward; do not reuse an earlier flow's state.
 1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
 2. Run `employed init --no-animation`.
 3. Leave `known_ats.yaml` empty so this flow exercises automatic detection.
-4. With internet access, run `EMPLOYED_LIVE_ATS_TESTS=1 npm test --
-   --test-name-pattern="live Airbnb careers page"`.
+4. With internet access, run `EMPLOYED_LIVE_ATS_TESTS=1 node --import tsx --test
+   --test-name-pattern="live Airbnb careers page" test/live-detection.test.ts`.
 5. Confirm the live case identifies `https://careers.airbnb.com` as Greenhouse slug `airbnb`.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
