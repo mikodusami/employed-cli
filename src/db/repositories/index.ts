@@ -70,14 +70,30 @@ function insertRows<Row extends object>(
   let created = 0;
   for (const row of rows) {
     const record = row as Record<string, unknown>;
+    const existing = database
+      .prepare(`SELECT * FROM ${table} WHERE id = ?`)
+      .get(record.id) as Record<string, unknown> | undefined;
+    if (existing) {
+      if (!sameRow(existing, record)) {
+        throw new Error(`Snapshot conflicts with existing ${table} row ${String(record.id)}.`);
+      }
+      continue;
+    }
     const columns = Object.keys(record);
     const names = columns.map((column) => `"${column}"`).join(', ');
     const values = columns.map((column) => `@${column}`).join(', ');
     const statement = `INSERT OR IGNORE INTO ${table} (${names}) VALUES (${values})`;
     const result = database.prepare(statement).run(record);
+    if (result.changes !== 1) {
+      throw new Error(`Snapshot ${table} row ${String(record.id)} conflicts with local data.`);
+    }
     created += result.changes;
   }
   return created;
+}
+
+function sameRow(existing: Record<string, unknown>, incoming: Record<string, unknown>): boolean {
+  return Object.keys(incoming).every((column) => existing[column] === incoming[column]);
 }
 
 export type { ApplicationFilter, CreateApplicationInput } from './applications.js';
