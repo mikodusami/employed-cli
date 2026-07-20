@@ -296,3 +296,49 @@ Run `npm run build`; then use the isolated-state protocol before each flow.
    (SmartRecruiters); Freeday, Polaroid, and Riverflex (Recruitee); and NVIDIA, Salesforce, and Citi
    (Workday).
 3. Confirm all tests pass with zero skips; treat later failures as potential public-API drift.
+
+## Layer 3, Unit 4 — Politeness and HTTP robustness
+
+### Flow 1: Verify configuration and migration defaults
+
+1. Open `$EMPLOYED_DIR/config.yaml` after initialization.
+2. Confirm `run.jitterMs` is `500`–`1500`, `maxRetries` is `3`, and `respectRobots` is `true`.
+3. Confirm initialization reports database schema version 2.
+4. Run `employed --help` and confirm `--verbose` appears without changing the workspace.
+
+### Flow 2: Observe a live conditional-cache hit
+
+1. Add Anthropic from `https://job-boards.greenhouse.io/anthropic`; its smoke test establishes the
+   cached Greenhouse response.
+2. Run `employed --verbose scan --company Anthropic --no-animation`.
+3. Confirm output includes `HTTP 304 cache hit` for the Greenhouse API and the scan succeeds.
+4. Run the same verbose scan again and confirm it reports the same seen count and `0 new`.
+
+### Flow 3: Confirm POST requests remain uncached
+
+1. Add NVIDIA from `https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite`.
+2. Run `employed --verbose scan --company NVIDIA --no-animation` twice.
+3. Confirm both scans succeed and neither prints an HTTP cache-hit line for the Workday CXS endpoint.
+4. Confirm the second scan reports `0 new`; deduplication still applies independently of HTTP cache.
+
+### Flow 4: Verify robots rules and failure fallback offline
+
+1. Run `npm test` without the live-test environment variable.
+2. Confirm the robots fixture disallows `/jobs/private` and detection returns method `manual`.
+3. Confirm the longer `/jobs/public` allow rule wins and a missing robots file permits detection.
+4. Confirm the robots file is fetched only through the memoized gate.
+
+### Flow 5: Verify retry boundaries without waiting
+
+1. Run `npm test`.
+2. Confirm the retry fixture returns `429`, `429`, then `200` and records backoffs of 1s and 2s.
+3. Confirm a `404` makes exactly one request.
+4. Confirm tests inject their clock/sleep seams and complete without real backoff delays.
+
+### Flow 6: Verify polite scheduling and Workday delay removal
+
+1. Run `npm test` and confirm the six-request scheduling fixture passes.
+2. Confirm same-domain requests are FIFO with jitter at or above the configured minimum, two domains
+   may overlap, and observed global concurrency never exceeds the configured cap.
+3. Run `rg 'TODO\\(politeness-unit\\)|PAGE_DELAY_MS' src` and confirm it returns no matches.
+4. Confirm Workday pagination tests still stop at 25 pages, now without adapter-owned sleeps.
