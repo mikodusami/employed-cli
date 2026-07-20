@@ -7,6 +7,7 @@ import { NodeProcessRunner } from '../ai/process.js';
 import type { AiProvider } from '../ai/types.js';
 import type { ProviderName } from '../config/schema.js';
 import type { AppConfig } from '../config/schema.js';
+import type { Repositories } from '../db/index.js';
 
 export interface ProviderDiagnostic {
   name: ProviderName;
@@ -24,10 +25,19 @@ export interface DatabaseDiagnostic {
   integrity: string;
 }
 
+/** Summary of the most recent `employed run`, or null if none has ever run. */
+export interface LastRunDiagnostic {
+  startedAt: string;
+  finishedAt: string | null;
+  jobsNew: number;
+  failures: number;
+}
+
 export interface DoctorResult {
   aiDisabled: boolean;
   providers: readonly ProviderDiagnostic[];
   database: DatabaseDiagnostic;
+  lastRun: LastRunDiagnostic | null;
 }
 
 export class DoctorService {
@@ -35,6 +45,7 @@ export class DoctorService {
     private readonly database: Database.Database,
     private readonly config: AppConfig,
     private readonly databasePath: string,
+    private readonly repositories: Repositories,
   ) {}
 
   public async inspect(): Promise<DoctorResult> {
@@ -68,6 +79,20 @@ export class DoctorService {
         active: this.config.ai.enabled && name === active,
       })),
       database: this.inspectDatabase(),
+      lastRun: this.inspectLastRun(),
+    };
+  }
+
+  private inspectLastRun(): LastRunDiagnostic | null {
+    const run = this.repositories.runs.latest();
+    if (!run) {
+      return null;
+    }
+    return {
+      startedAt: run.started_at,
+      finishedAt: run.finished_at,
+      jobsNew: run.jobs_new ?? 0,
+      failures: countFailures(run.failures),
     };
   }
 
@@ -85,5 +110,17 @@ export class DoctorService {
       tableCount: tableCount ?? 0,
       integrity,
     };
+  }
+}
+
+function countFailures(value: string | null): number {
+  if (!value) {
+    return 0;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.length : 1;
+  } catch {
+    return 1;
   }
 }
