@@ -28,6 +28,7 @@ test('HTTP client follows policy and returns non-2xx response data', async () =>
       status: 503,
       body: 'temporarily unavailable',
       contentType: 'text/plain',
+      headers: { 'content-type': 'text/plain' },
     });
     assert.equal(capturedInit?.redirect, 'follow');
     assert.equal(new Headers(capturedInit?.headers).get('user-agent'), HTTP_USER_AGENT);
