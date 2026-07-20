@@ -17,6 +17,9 @@ export class HttpError extends AppError {}
 /** Indicates an ATS response or adapter contract failure. */
 export class AdapterError extends AppError {}
 
+/** Indicates that robots.txt forbids an automated request path. */
+export class RobotsDisallowedError extends AppError {}
+
 /** Indicates a configuration read, parse, or validation failure. */
 export class ConfigError extends AppError {
   public constructor(
