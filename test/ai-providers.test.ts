@@ -1,5 +1,8 @@
 /** Verifies provider argv safety, envelopes, availability caching, and timeout mapping. */
 import assert from 'node:assert/strict';
+import type { ChildProcessByStdio } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+import { PassThrough, type Readable } from 'node:stream';
 import test from 'node:test';
 
 import { AiProviderError, ProviderUnavailableError } from '../src/ai/index.js';
@@ -8,6 +11,7 @@ import type {
   ProcessResult,
   ProcessRunner,
 } from '../src/ai/process.js';
+import { NodeProcessRunner } from '../src/ai/process.js';
 import { ClaudeCodeProvider } from '../src/ai/providers/claude.js';
 import {
   CodexProvider,
@@ -98,6 +102,30 @@ test('providers map timeout and missing binaries to typed errors', async () => {
     () => missing.run({ prompt: 'test', timeoutMs: 25 }),
     ProviderUnavailableError,
   );
+});
+
+test('process timeout escalates to a hard kill and waits for child exit', async () => {
+  const signals: NodeJS.Signals[] = [];
+  const child = Object.assign(new EventEmitter(), {
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill: (signal: NodeJS.Signals): boolean => {
+      signals.push(signal);
+      if (signal === 'SIGKILL') {
+        queueMicrotask(() => child.emit('close', null));
+      }
+      return true;
+    },
+  });
+  const spawnFake = () =>
+    child as unknown as ChildProcessByStdio<null, Readable, Readable>;
+  const processes = new NodeProcessRunner(spawnFake, 1);
+
+  const outcome = await processes.run({ binary: 'never-finishes', args: [], timeoutMs: 1 });
+
+  assert.equal(outcome.timedOut, true);
+  assert.equal(outcome.exitCode, null);
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL']);
 });
 
 function result(stdout: string): ProcessResult {
