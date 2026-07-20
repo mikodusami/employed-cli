@@ -57,6 +57,8 @@ function renderSummary(context: CommandContext, summary: ImportHqSummary): void 
   context.ui.table(
     ['Dataset', 'Created', 'Merged', 'Skipped'],
     [
+      ['Companies', String(summary.native.companies), '0', 'existing preserved'],
+      ['Jobs', String(summary.native.jobs), '0', 'existing preserved'],
       [
         'Applications',
         String(summary.applications.created),
