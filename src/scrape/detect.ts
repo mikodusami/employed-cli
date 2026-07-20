@@ -128,11 +128,14 @@ async function safelyFetch(
 }
 
 function bestDetailSource(pages: readonly CrawledPage[], fallback: CrawledPage): CrawledPage {
+  if (pages.length === 0) {
+    return fallback;
+  }
   return pages.reduce((best, page) => {
     const candidateCount = findJobDetailLinks(page.body, page.finalUrl).length;
     const bestCount = findJobDetailLinks(best.body, best.finalUrl).length;
     return candidateCount > bestCount ? page : best;
-  }, fallback);
+  });
 }
 
 function matchedResult(
