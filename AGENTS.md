@@ -2,4 +2,4 @@
 - follow the nasa guide for typescript applications
 - after every decison being made, update decisons.md with the timestamp, label of decision, and description.
 - update userflows.md with userflows to go through every layer that has been made.
-- update documentation.md every session to document and explain the files and all their functions utilizing links such that new devlopers could quickly navigate to a file and such if needed.
+- Every stateful user flow must be isolated. Before a flow, run `export EMPLOYED_DIR="$(mktemp -d)"` followed by `employed init`; after it, run `rm -rf "$EMPLOYED_DIR"` and `unset EMPLOYED_DIR`. User-flow instructions must account for this lifecycle and must never rely on state from an earlier flow.
