@@ -1,6 +1,53 @@
 /** Defines and types every user-editable YAML configuration file. */
 import { z } from 'zod';
 
+const ProviderNameSchema = z.enum(['claude', 'codex']);
+
+const ProviderSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+});
+
+/**
+ * Controls AI availability, provider preference, and the shared per-run budget.
+ *
+ * @remarks Disabling `enabled`, or disabling every provider, puts employed in AI-free degraded
+ * mode without affecting non-AI features. Enabled providers are attempted in preference order;
+ * later providers are fallbacks when an earlier binary is unavailable or fails.
+ */
+export const AiConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    preference: z.array(ProviderNameSchema).default(['claude', 'codex']),
+    providers: z
+      .object({
+        claude: ProviderSettingsSchema.default({ enabled: true }),
+        codex: ProviderSettingsSchema.default({ enabled: true }),
+      })
+      .default({ claude: { enabled: true }, codex: { enabled: true } }),
+    maxCallsPerRun: z.number().int().min(0).default(10),
+  })
+  .superRefine(({ preference }, context) => {
+    if (new Set(preference).size !== preference.length) {
+      context.addIssue({
+        code: 'custom',
+        path: ['preference'],
+        message: 'AI provider preference entries must be unique.',
+      });
+    }
+  })
+  .default({
+    enabled: true,
+    preference: ['claude', 'codex'],
+    providers: { claude: { enabled: true }, codex: { enabled: true } },
+    maxCallsPerRun: 10,
+  });
+
+/** Validated AI provider settings. */
+export type AiConfig = z.infer<typeof AiConfigSchema>;
+
+/** AI coding-agent CLI supported by employed. */
+export type ProviderName = z.infer<typeof ProviderNameSchema>;
+
 /** Main application settings and their forward-compatible defaults. */
 export const AppConfigSchema = z.object({
   run: z
@@ -14,13 +61,7 @@ export const AppConfigSchema = z.object({
       enabled: z.boolean().default(false),
     })
     .default({ enabled: false }),
-  ai: z
-    .object({
-      provider: z.enum(['claude', 'codex', 'chatgpt']).default('claude'),
-      enabled: z.boolean().default(true),
-      maxCallsPerRun: z.number().int().min(0).default(10),
-    })
-    .default({ provider: 'claude', enabled: true, maxCallsPerRun: 10 }),
+  ai: AiConfigSchema,
 });
 
 /** Validated main application settings. */
