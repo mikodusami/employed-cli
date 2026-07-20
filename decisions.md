@@ -131,3 +131,16 @@ The flow begins by exporting a `mktemp -d` directory and calling `employed init`
 specific directory and unsets the variable on completion. This makes each flow reproducible in any
 order and prevents jobs, companies, configuration edits, or health data from leaking into another
 flow.
+
+## 2026-07-19T23:34:34-04:00 — Complete Tier-1 ATS adapter fleet
+
+The shared `HttpClient` owns both text GET and JSON POST policy so Workday does not create a private
+network path. Workday composite slugs use one validated codec shared by detection and scraping.
+Pagination remains inside SmartRecruiters and Workday adapters, bounded at five and twenty-five pages
+respectively; the scrape pipeline continues to receive one complete canonical posting list.
+
+SmartRecruiters and Workday intentionally store null descriptions because their list endpoints omit
+full content and per-job detail requests would create unacceptable N+1 traffic. Live checks across
+three boards per new provider confirmed the mappings. Ubisoft demonstrated that a SmartRecruiters
+department object may omit its label, so that nested field is optional. NVIDIA confirmed Workday
+public URLs require the careers-site segment before `externalPath`.
