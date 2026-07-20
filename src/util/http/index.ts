@@ -18,11 +18,16 @@ export { HttpError, RobotsDisallowedError } from '../errors.js';
 export interface HttpClientDependencies {
   db: Database.Database;
   config: AppConfig;
+  onCacheHit?: (url: string) => void;
 }
 
 /** Builds the one HTTP stack shared by detection, adapters, and future generated scrapers. */
-export function buildHttpClient({ db, config }: HttpClientDependencies): RetryHttpClient {
-  const cached = new CachingHttpClient(new UndiciHttpClient(), db);
+export function buildHttpClient({
+  db,
+  config,
+  onCacheHit,
+}: HttpClientDependencies): RetryHttpClient {
+  const cached = new CachingHttpClient(new UndiciHttpClient(), db, () => new Date(), onCacheHit);
   const polite = new PoliteHttpClient(cached, {
     concurrency: config.run.concurrency,
     jitterMs: config.run.jitterMs,
