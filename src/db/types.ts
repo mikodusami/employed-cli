@@ -1,5 +1,7 @@
 /** Canonical persistence and domain types shared by application features. */
 
+export type { ProviderName } from '../config/schema.js';
+
 /** Company priority tier. */
 export type Tier = 'A' | 'B' | 'C';
 
