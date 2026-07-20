@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import { ClaudeCodeProvider } from '../ai/providers/claude.js';
 import { CodexProvider } from '../ai/providers/codex.js';
 import { NodeProcessRunner } from '../ai/process.js';
+import type { AiProvider } from '../ai/types.js';
 import type { ProviderName } from '../config/schema.js';
 import type { AppConfig } from '../config/schema.js';
 
@@ -38,10 +39,10 @@ export class DoctorService {
 
   public async inspect(): Promise<DoctorResult> {
     const processes = new NodeProcessRunner();
-    const providers = new Map([
+    const providers = new Map<ProviderName, AiProvider>([
       ['claude', new ClaudeCodeProvider(processes)],
       ['codex', new CodexProvider(processes)],
-    ] as const);
+    ]);
     const statuses = await Promise.all(
       [...providers].map(async ([name, provider]) => ({
         name,
