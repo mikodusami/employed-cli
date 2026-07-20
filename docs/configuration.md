@@ -113,6 +113,23 @@ employed import ~/.employed/companies.yaml
 Import is non-aborting: one invalid entry is reported without preventing valid entries from being
 processed. Existing company names are skipped rather than duplicated.
 
+## `known_ats.yaml`
+
+This optional escape hatch pins a company to a supported ATS when its branded careers site hides
+the board behind JavaScript, consent screens, or unusual navigation:
+
+```yaml
+Airbnb:
+  method: greenhouse
+  slug: airbnb
+```
+
+Keys match company names case-insensitively. `method` must be `greenhouse`, `lever`, `ashby`,
+`workday`, `smartrecruiters`, or `recruitee`; `slug` is the identifier that provider's adapter
+expects. A matching override wins before network detection and therefore makes zero detection
+requests. Keep this file for verified exceptions—normal companies should use automatic detection.
+Deleting every entry or omitting the file restores automatic detection.
+
 ## `keywords.yaml`
 
 ```yaml
