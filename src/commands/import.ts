@@ -1,8 +1,8 @@
 /** Registers non-aborting company batch import orchestration. */
 import type { Command } from 'commander';
 
-import { CompanyService, type ImportProgress } from '../services/company.js';
-import { ScrapeService } from '../services/scrape.js';
+import type { ImportProgress } from '../services/company.js';
+import { ScrapeRuntime } from '../services/scrape-runtime.js';
 import type { CommandContext } from './types.js';
 
 /** Adds the company import command to the root program. */
@@ -16,11 +16,16 @@ export function register(program: Command, context: CommandContext): void {
 async function importCompanies(context: CommandContext, file?: string): Promise<void> {
   const companiesFile = context.config.loadCompanies(file);
   const spinner = context.ui.spinner('Importing companies').start();
-  const scrapeService = new ScrapeService(context.repos, context.http);
-  const service = new CompanyService(context.repos, context.detector, scrapeService);
+  const runtime = new ScrapeRuntime({
+    repositories: context.repos,
+    http: context.http,
+    detector: context.detector,
+    ai: context.ai,
+    config: context.config.loadApp(),
+  });
 
   try {
-    const summary = await service.importFromConfig(companiesFile, (progress) => {
+    const summary = await runtime.companies.importFromConfig(companiesFile, (progress) => {
       spinner.update(formatProgress(progress));
     });
     spinner.succeed('Company import complete');
@@ -34,6 +39,8 @@ async function importCompanies(context: CommandContext, file?: string): Promise<
   } catch (error: unknown) {
     spinner.fail('Company import failed');
     throw error;
+  } finally {
+    await runtime.close();
   }
 }
 
