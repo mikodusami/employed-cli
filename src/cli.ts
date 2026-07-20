@@ -10,10 +10,10 @@ import { register as registerScan } from './commands/scan.js';
 import type { CommandContext } from './commands/types.js';
 import { VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
-import { SignatureDetector } from './scrape/detect.js';
+import { SignatureDetector, type AtsDetector } from './scrape/detect.js';
 import { createUI } from './ui/index.js';
 import { AppError } from './util/errors.js';
-import { UndiciHttpClient } from './util/http.js';
+import { buildHttpClient, type HttpClient, RobotsGate } from './util/http.js';
 
 interface ProgramOptions {
   animation: boolean;
@@ -23,21 +23,35 @@ interface ProgramOptions {
 async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
   const ui = createUI(isAnimationEnabled);
-  const http = new UndiciHttpClient();
+  const config = new ConfigService();
   let database: ReturnType<typeof createDb> | undefined;
   let repositories: Repositories | undefined;
+  let http: HttpClient | undefined;
+  let detector: AtsDetector | undefined;
   const getDatabase = (): ReturnType<typeof createDb> => (database ??= createDb());
+  const getHttp = (): HttpClient =>
+    (http ??= buildHttpClient({ db: getDatabase(), config: config.loadApp() }));
+  const getDetector = (): AtsDetector =>
+    (detector ??= new SignatureDetector(
+      getHttp(),
+      new RobotsGate(getHttp()),
+      config.loadApp().run.respectRobots,
+    ));
   const context: CommandContext = {
     ui,
-    config: new ConfigService(),
+    config,
     get db() {
       return getDatabase();
     },
     get repos() {
       return (repositories ??= new Repositories(getDatabase()));
     },
-    detector: new SignatureDetector(http),
-    http,
+    get detector() {
+      return getDetector();
+    },
+    get http() {
+      return getHttp();
+    },
   };
   const program = new Command()
     .name('employed')
