@@ -15,13 +15,14 @@ test(
   async () => {
     const detector = new SignatureDetector(new UndiciHttpClient());
     const cases = [
-      ['https://job-boards.greenhouse.io/anthropic', 'greenhouse', 'anthropic'],
-      ['https://jobs.ashbyhq.com/linear', 'ashby', 'linear'],
-      ['https://careers.smartrecruiters.com/Visa', 'smartrecruiters', 'Visa'],
+      ['Anthropic', 'https://job-boards.greenhouse.io/anthropic', 'greenhouse', 'anthropic'],
+      ['Linear', 'https://jobs.ashbyhq.com/linear', 'ashby', 'linear'],
+      ['Visa', 'https://careers.smartrecruiters.com/Visa', 'smartrecruiters', 'Visa'],
+      ['Airbnb', 'https://careers.airbnb.com', 'greenhouse', 'airbnb'],
     ] as const;
 
-    for (const [url, method, slug] of cases) {
-      const result = await detector.detect(url);
+    for (const [name, url, method, slug] of cases) {
+      const result = await detector.detect({ name, careers_url: url });
       assert.equal(result.method, method);
       assert.equal(result.slug, slug);
     }
