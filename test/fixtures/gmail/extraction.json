@@ -1,0 +1,101 @@
+[
+  {
+    "name": "tier 1 (subject): Whatnot via an Ashby no-reply sender",
+    "email": {
+      "threadId": "e1",
+      "date": "2026-01-14T18:00:00.000Z",
+      "sender": "no-reply@ashbyhq.com",
+      "subject": "Thank you for applying to Whatnot!",
+      "snippet": "Thank you for applying. Our team will review your application shortly."
+    },
+    "expectedCompany": "Whatnot"
+  },
+  {
+    "name": "tier 2 (sender local part): Red Hat via a Workday tenant address",
+    "email": {
+      "threadId": "e2",
+      "date": "2026-01-15T12:00:00.000Z",
+      "sender": "redhat@myworkday.com",
+      "subject": "Your Workday application status has been updated",
+      "snippet": "There has been an update to your application."
+    },
+    "expectedCompany": "Red Hat"
+  },
+  {
+    "name": "tier 2 (sender local part): Federal Reserve Bank of Atlanta via a Workday tenant address",
+    "email": {
+      "threadId": "e3",
+      "date": "2026-01-15T12:05:00.000Z",
+      "sender": "rb@myworkday.com",
+      "subject": "Your Workday application status has been updated",
+      "snippet": "There has been an update to your application."
+    },
+    "expectedCompany": "Federal Reserve Bank of Atlanta"
+  },
+  {
+    "name": "tier 1 (subject): Anthropic via a Greenhouse no-reply sender",
+    "email": {
+      "threadId": "e4",
+      "date": "2026-01-13T17:00:00.000Z",
+      "sender": "no-reply@greenhouse.io",
+      "subject": "Your application to Anthropic",
+      "snippet": "We have received your application and will be in touch."
+    },
+    "expectedCompany": "Anthropic"
+  },
+  {
+    "name": "tier 1 (subject): Stripe via a Lever hire sender",
+    "email": {
+      "threadId": "e5",
+      "date": "2026-01-16T09:00:00.000Z",
+      "sender": "jobs@hire.lever.co",
+      "subject": "Thanks for applying to Stripe!",
+      "snippet": "We appreciate your interest in joining our team."
+    },
+    "expectedCompany": "Stripe"
+  },
+  {
+    "name": "tier 1 trims trailing punctuation: stops at the first comma",
+    "email": {
+      "threadId": "e6",
+      "date": "2026-01-17T09:00:00.000Z",
+      "sender": "no-reply@smartrecruiters.com",
+      "subject": "Your application to Notion, Inc. has been received!",
+      "snippet": "Thanks for your interest."
+    },
+    "expectedCompany": "Notion"
+  },
+  {
+    "name": "tier 2 miss: unmapped Workday tenant returns null rather than guessing",
+    "email": {
+      "threadId": "e7",
+      "date": "2026-01-18T09:00:00.000Z",
+      "sender": "unknown-tenant@myworkday.com",
+      "subject": "Your Workday application status has been updated",
+      "snippet": "There has been an update to your application."
+    },
+    "expectedCompany": null
+  },
+  {
+    "name": "no ATS signal at all: a personal email returns null",
+    "email": {
+      "threadId": "e8",
+      "date": "2026-01-19T09:00:00.000Z",
+      "sender": "a-friend@example.com",
+      "subject": "Congrats on the new role!",
+      "snippet": "Saw your update, congrats! Let's catch up soon."
+    },
+    "expectedCompany": null
+  },
+  {
+    "name": "tier 2 is case-insensitive on both the local part and the domain",
+    "email": {
+      "threadId": "e9",
+      "date": "2026-01-20T09:00:00.000Z",
+      "sender": "RedHat@MyWorkday.COM",
+      "subject": "Your Workday application status has been updated",
+      "snippet": "There has been an update to your application."
+    },
+    "expectedCompany": "Red Hat"
+  }
+]

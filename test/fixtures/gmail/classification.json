@@ -1,0 +1,123 @@
+[
+  {
+    "name": "ignore: LinkedIn job-alert digest, deliberately worded to look interview-ish",
+    "email": {
+      "threadId": "t1",
+      "date": "2026-01-05T09:00:00.000Z",
+      "sender": "jobalerts-noreply@linkedin.com",
+      "subject": "5 new interview-ready jobs matching your search",
+      "snippet": "New jobs recommended for you based on your profile. See interview tips inside."
+    },
+    "expected": { "type": "ignore", "confidence": "high" }
+  },
+  {
+    "name": "ignore: post-interview survey/feedback request",
+    "email": {
+      "threadId": "t2",
+      "date": "2026-01-06T10:00:00.000Z",
+      "sender": "feedback@surveyplatform.com",
+      "subject": "How was your experience? Take our quick survey",
+      "snippet": "We'd love your feedback on your recent interview process."
+    },
+    "expected": { "type": "ignore", "confidence": "high" }
+  },
+  {
+    "name": "rejected: reject-before-confirm ordering (contains applied-style phrasing too)",
+    "email": {
+      "threadId": "t3",
+      "date": "2026-01-07T11:00:00.000Z",
+      "sender": "recruiting@acme.example.com",
+      "subject": "Update on your application to Acme",
+      "snippet": "Thank you for your interest in the Software Engineer role at Acme. After careful consideration, we have decided to move forward with other candidates."
+    },
+    "expected": { "type": "rejected", "confidence": "high" }
+  },
+  {
+    "name": "rejected: generic non-selection notice",
+    "email": {
+      "threadId": "t4",
+      "date": "2026-01-08T12:00:00.000Z",
+      "sender": "talent@globex.example.com",
+      "subject": "Your application to Globex",
+      "snippet": "We wanted to let you know that you have not been selected for this role."
+    },
+    "expected": { "type": "rejected", "confidence": "high" }
+  },
+  {
+    "name": "offer: job offer extended",
+    "email": {
+      "threadId": "t5",
+      "date": "2026-01-09T13:00:00.000Z",
+      "sender": "hr@initech.example.com",
+      "subject": "Your offer from Initech",
+      "snippet": "We are pleased to offer you the position of Backend Engineer at Initech."
+    },
+    "expected": { "type": "offer", "confidence": "high" }
+  },
+  {
+    "name": "oa: online coding assessment invite",
+    "email": {
+      "threadId": "t6",
+      "date": "2026-01-10T14:00:00.000Z",
+      "sender": "noreply@hackerrank.com",
+      "subject": "Complete your online assessment for Umbrella Corp",
+      "snippet": "Please complete the coding challenge within 5 days."
+    },
+    "expected": { "type": "oa", "confidence": "high" }
+  },
+  {
+    "name": "interview: scheduling request",
+    "email": {
+      "threadId": "t7",
+      "date": "2026-01-11T15:00:00.000Z",
+      "sender": "recruiting@soylent.example.com",
+      "subject": "Let's schedule your interview at Soylent",
+      "snippet": "We would like to invite you to interview for the Data Engineer role."
+    },
+    "expected": { "type": "interview", "confidence": "high" }
+  },
+  {
+    "name": "interview: recruiter call request",
+    "email": {
+      "threadId": "t8",
+      "date": "2026-01-12T16:00:00.000Z",
+      "sender": "recruiter@hooli.example.com",
+      "subject": "Quick recruiter call this week?",
+      "snippet": "Would love to chat with our recruiter about your background."
+    },
+    "expected": { "type": "interview", "confidence": "high" }
+  },
+  {
+    "name": "applied: application received confirmation",
+    "email": {
+      "threadId": "t9",
+      "date": "2026-01-13T17:00:00.000Z",
+      "sender": "no-reply@greenhouse.io",
+      "subject": "Your application to Anthropic",
+      "snippet": "We have received your application and will be in touch."
+    },
+    "expected": { "type": "applied", "confidence": "high" }
+  },
+  {
+    "name": "applied: thank-you-for-applying confirmation",
+    "email": {
+      "threadId": "t10",
+      "date": "2026-01-14T18:00:00.000Z",
+      "sender": "no-reply@ashbyhq.com",
+      "subject": "Thank you for applying to Whatnot!",
+      "snippet": "Thank you for applying. Our team will review your application shortly."
+    },
+    "expected": { "type": "applied", "confidence": "high" }
+  },
+  {
+    "name": "fall-through: unrecognized email matches no rule",
+    "email": {
+      "threadId": "t11",
+      "date": "2026-01-15T19:00:00.000Z",
+      "sender": "a-friend@example.com",
+      "subject": "Congrats on the new role!",
+      "snippet": "Saw your update, congrats! Let's catch up soon."
+    },
+    "expected": { "type": null, "confidence": "low" }
+  }
+]
