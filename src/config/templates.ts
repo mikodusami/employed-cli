@@ -17,6 +17,13 @@ run:
   respectRobots: true
   # Generate a static scraper after adding an otherwise unsupported careers page.
   autoGenerateOnAdd: true
+  # Bound automatic scraper repairs per company and across one run.
+  heal:
+    maxPerCompany: 2
+    maxPerRun: 5
+  # Hard timeout for rendered page navigation and selector waits.
+  playwright:
+    navTimeoutMs: 30000
 
 email:
   # Email integration is configured in a later layer.
