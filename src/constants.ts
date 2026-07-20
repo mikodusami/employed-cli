@@ -12,8 +12,10 @@ export const VERSION = '0.1.0';
 /** Honest identifier sent with employed HTTP requests. */
 export const HTTP_USER_AGENT = 'employed/1.0 (+personal job search tool)';
 
-/** Root directory for all user-specific employed data. */
-export const EMPLOYED_DIR = path.join(os.homedir(), '.employed');
+/** Root directory for all user-specific employed data, overridable for isolated runs. */
+export const EMPLOYED_DIR = process.env.EMPLOYED_DIR?.trim()
+  ? path.resolve(process.env.EMPLOYED_DIR)
+  : path.join(os.homedir(), '.employed');
 
 /** SQLite database location. */
 export const DB_PATH = path.join(EMPLOYED_DIR, 'employed.db');
