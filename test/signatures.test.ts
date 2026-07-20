@@ -51,6 +51,13 @@ test('uses a redirected final URL and prioritizes Greenhouse first', () => {
   });
 });
 
+test('recognizes the current job-boards Greenhouse domain', () => {
+  assert.equal(
+    matchSignatures('https://job-boards.greenhouse.io/anthropic', '')?.slug,
+    'anthropic',
+  );
+});
+
 test('returns null for a custom careers page', () => {
   assert.equal(
     matchSignatures('https://example.com/careers', readFixture('custom.html')),
