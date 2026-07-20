@@ -9,6 +9,7 @@ export interface WorkdaySlugParts {
 
 const WORKDAY_PART = /^[a-z0-9][a-z0-9-]*$/i;
 const WORKDAY_INSTANCE = /^wd\d+$/i;
+const WORKDAY_SITE = /^[a-z0-9][a-z0-9_-]*$/i;
 
 /** Encodes the three Workday routing components into the database slug column. */
 export function encodeWorkdaySlug(parts: WorkdaySlugParts): string {
@@ -31,7 +32,7 @@ function validateParts(parts: WorkdaySlugParts): void {
   if (
     !WORKDAY_PART.test(parts.tenant) ||
     !WORKDAY_INSTANCE.test(parts.instance) ||
-    !WORKDAY_PART.test(parts.site)
+    !WORKDAY_SITE.test(parts.site)
   ) {
     throw new AdapterError(
       `Malformed Workday slug parts: ${parts.tenant}|${parts.instance}|${parts.site}`,
