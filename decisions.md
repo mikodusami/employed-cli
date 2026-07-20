@@ -244,3 +244,28 @@ can heal without AI. Generated companies require generation; when AI is disabled
 remain degraded instead of crashing or being marked falsely repaired. Successful detection or
 generation sets health to ok and resets the failure streak; exhausted or failed repair is surfaced
 as deferred or broken with an explicit note.
+
+## 2026-07-20T05:23:09-04:00 — Versioned scoring model boundary
+
+The pure scoring engine owns structural multipliers of two for title signals, one for description
+signals, and negative two for penalties, plus the A/B/C thresholds of 30/18/8. Per-keyword weights
+remain exclusively in `keywords.yaml`. This separates user tuning from model-shape changes and gives
+reports and future statistics one exported threshold source.
+
+Matching is case-insensitive substring matching. Title and description lists inspect only their
+respective fields, while negative signals deliberately inspect title and description together.
+Matched signals are deduplicated across lists and persisted as a JSON array even though analytics do
+not consume them yet. Missing or blank descriptions set the engine's `titleOnly` flag; no duplicate
+database flag is stored because that state remains derivable from the job row.
+
+## 2026-07-20T05:23:09-04:00 — Scoring persistence and offline re-scoring
+
+`ScrapeService` scores normalized posting data before every upsert, including known-job refreshes,
+then persists score, band, and matched keywords atomically with job and company updates. Repositories
+store these values but never compute them. Production scrape runtimes receive one memoized keyword
+profile from `ConfigService`; direct low-level tests may use an empty profile.
+
+`employed rescore` loads the current profile once and updates only open jobs inside one transaction.
+It receives no HTTP or scraper dependency, making a weight edit independently applicable without a
+network request. Interactive scan output ranks newly inserted jobs by descending score and presents
+Score, Band, Title, and Location in that order.
