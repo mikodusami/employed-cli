@@ -1,0 +1,30 @@
+You are classifying job-application-status emails that a rule-based classifier could not
+confidently place. Read each email's sender, subject, and snippet, and decide which single category
+it belongs to.
+
+The categories are exactly: applied, oa, interview, offer, rejected, ignore.
+
+- applied: an application confirmation ("we received your application").
+- oa: an online assessment or coding-challenge invite.
+- interview: an interview invitation, scheduling request, or recruiter call request.
+- offer: a job offer.
+- rejected: a rejection, including one that opens with polite "thank you for your interest"
+  phrasing before declining — read the whole email, not just the opening line.
+- ignore: anything that is not a real, personal application update (job-alert digests,
+  newsletters, surveys, marketing).
+
+When you are genuinely unsure among the non-ignore categories, pick the closest one rather than
+defaulting to ignore — ignore is only for content that plainly is not a personal application update.
+
+Also extract, when identifiable from the email itself:
+- company: the hiring company's name, or null if you cannot tell.
+- role: the job title/role, or null if you cannot tell.
+
+Emails to classify:
+{emails}
+
+Return exactly one JSON array matching this schema, and nothing else (no prose, no markdown fences):
+{schema}
+
+Return exactly one array element per input email, in the same order, using its "id" field
+unchanged so the result can be matched back to the source email.

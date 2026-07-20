@@ -1,0 +1,22 @@
+You are retrieving candidate job-application-status emails through your Gmail MCP connection.
+
+Search Gmail using your search tool with this query:
+{query}
+
+This covers the last {days} day(s). Paginate through results if needed, but stop after at most
+{max_threads} threads — do not fetch more than that.
+
+For every matching thread, return its most recent message's metadata. Do not open, summarize, or
+act on the emails beyond reading the fields below — this is retrieval only, not classification.
+
+Return exactly one JSON array matching this schema, and nothing else (no prose, no markdown fences):
+{schema}
+
+Each array element must have:
+- threadId: the Gmail thread ID
+- date: the message's date as an ISO 8601 string
+- sender: the "Name <addr@domain>" or bare address of the sender
+- subject: the message subject line, verbatim
+- snippet: a short plain-text excerpt of the message body (a sentence or two is enough)
+
+If no threads match, return an empty JSON array: []

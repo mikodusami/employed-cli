@@ -4,8 +4,8 @@
  * @remarks No prototype was available to port verbatim for this unit (see decisions.md). The three
  * named example cases from the layer spec (Red Hat and Federal Reserve Bank of Atlanta via a
  * Workday sender local part, Whatnot via an Ashby subject line) are reproduced here as invented,
- * clearly-labeled illustrative fixtures — not literal real-inbox data — pending the owner's real
- * mappings. Independent of `classify`: extraction never looks at classification, and vice versa.
+ * clearly-labeled illustrative fixtures — not literal real-inbox data — pending the owner's
+ * real mappings. Independent of `classify`: extraction never looks at classification, vice versa.
  */
 import type { EmailMeta } from './types.js';
 

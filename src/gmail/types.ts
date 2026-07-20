@@ -1,14 +1,17 @@
-/** Email domain shapes shared by the classifier, extractor, and future Gmail fetch layer. */
+/** Email domain shapes shared by the classifier, extractor, and Gmail fetch/sync layer. */
+import { z } from 'zod';
 
-/** What the fetch layer (a later unit) will provide; defined first so this unit can be built and
- * tested against the contract before anything produces a real value. */
-export interface EmailMeta {
-  threadId: string;
-  date: string;
-  sender: string;
-  subject: string;
-  snippet: string;
-}
+/** What the fetch layer produces; also the runtime validation schema for its AI response. */
+export const EmailMetaSchema = z.object({
+  threadId: z.string(),
+  date: z.string(),
+  sender: z.string(),
+  subject: z.string(),
+  snippet: z.string(),
+});
+
+/** One fetched email's metadata, validated against `EmailMetaSchema` when it comes from AI. */
+export type EmailMeta = z.infer<typeof EmailMetaSchema>;
 
 /** The outcome categories a rule can confidently assign. */
 export type EmailClass = 'applied' | 'oa' | 'interview' | 'offer' | 'rejected' | 'ignore';
