@@ -2,10 +2,13 @@
 export { createDb, getDatabaseVersion, withTransaction } from './connection.js';
 export { Repositories } from './repositories/index.js';
 export type {
+  AppendEventInput,
+  CreateApplicationInput,
   FinishRunInput,
   InsertCompanyInput,
   JobInsertInput,
   JobScoreUpdate,
+  MarkProcessedInput,
   UpsertJobInput,
   UpsertJobResult,
 } from './repositories/index.js';
