@@ -21,6 +21,8 @@ test('schemas populate every top-level configuration section from an empty mappi
       maxRetries: 3,
       respectRobots: true,
       autoGenerateOnAdd: true,
+      heal: { maxPerCompany: 2, maxPerRun: 5 },
+      playwright: { navTimeoutMs: 30_000 },
     },
     email: { enabled: false },
     ai: {
