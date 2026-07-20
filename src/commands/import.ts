@@ -2,6 +2,7 @@
 import type { Command } from 'commander';
 
 import { CompanyService, type ImportProgress } from '../services/company.js';
+import { ScrapeService } from '../services/scrape.js';
 import type { CommandContext } from './types.js';
 
 /** Adds the company import command to the root program. */
@@ -15,7 +16,8 @@ export function register(program: Command, context: CommandContext): void {
 async function importCompanies(context: CommandContext, file?: string): Promise<void> {
   const companiesFile = context.config.loadCompanies(file);
   const spinner = context.ui.spinner('Importing companies').start();
-  const service = new CompanyService(context.repos, context.detector);
+  const scrapeService = new ScrapeService(context.repos, context.http);
+  const service = new CompanyService(context.repos, context.detector, scrapeService);
 
   try {
     const summary = await service.importFromConfig(companiesFile, (progress) => {
