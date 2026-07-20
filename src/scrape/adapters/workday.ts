@@ -76,7 +76,8 @@ type WorkdayPosting = z.infer<typeof WorkdayEnvelopeSchema>['jobPostings'][numbe
 function mapPosting(careersBase: string, posting: WorkdayPosting): RawPosting {
   return {
     title: posting.title,
-    url: new URL(posting.externalPath, `${careersBase}/`).toString(),
+    // NVIDIA, Salesforce, and Citi require the site segment before externalPath.
+    url: `${careersBase}${posting.externalPath.startsWith('/') ? '' : '/'}${posting.externalPath}`,
     location: posting.locationsText ?? null,
     department: null,
     description: null,
