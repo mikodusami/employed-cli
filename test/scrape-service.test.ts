@@ -25,6 +25,13 @@ test('scrapeCompany inserts once then refreshes the same posting on rerun', asyn
   const service = new ScrapeService(
     repositories,
     new FixtureHttpClient(readFixture('greenhouse.json')),
+    {
+      keywords: {
+        title: { 'account executive': 5 },
+        description: { ai: 2 },
+        negative: { apac: 1 },
+      },
+    },
   );
 
   const first = await service.scrapeCompany(company);
@@ -38,6 +45,11 @@ test('scrapeCompany inserts once then refreshes the same posting on rerun', asyn
     { status: 'completed', seen: 1, new: 0 },
   );
   assert.equal(repositories.jobs.findNewSince('2000-01-01').length, 1);
+  const scored = repositories.jobs.findNewSince('2000-01-01')[0];
+  assert.equal(scored?.score, 10);
+  assert.equal(scored?.band, 'C');
+  assert.deepEqual(JSON.parse(scored?.matched_kw ?? ''), ['account executive', 'ai', 'apac']);
+  assert.equal(first.newJobs[0]?.score, 10);
   assert.equal(repositories.companies.findByName('Fixture Company')?.last_yield, 1);
   database.close();
 });
