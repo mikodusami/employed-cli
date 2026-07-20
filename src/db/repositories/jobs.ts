@@ -33,6 +33,13 @@ export interface UpsertJobResult {
   isNew: boolean;
 }
 
+export interface JobScoreUpdate {
+  id: number;
+  score: number;
+  band: Band;
+  matched_kw: string;
+}
+
 /** Owns every SQL operation involving the jobs table. */
 export class JobRepository {
   private readonly existsStatement: Database.Statement<[JobIdentityParameter], { id: number }>;
@@ -40,6 +47,8 @@ export class JobRepository {
   private readonly findNewSinceStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly dismissStatement: Database.Statement<[{ id: number }], Database.RunResult>;
   private readonly findByIdStatement: Database.Statement<[{ id: number }], JobRow>;
+  private readonly listOpenStatement: Database.Statement<[], JobRow>;
+  private readonly updateScoreStatement: Database.Statement<[JobScoreUpdate], Database.RunResult>;
 
   public constructor(database: Database.Database) {
     this.existsStatement = database.prepare(`
@@ -54,7 +63,10 @@ export class JobRepository {
         @first_seen, @last_seen, @dedupe_key, @score, @band, @matched_kw
       )
       ON CONFLICT(company_id, dedupe_key) DO UPDATE SET
-        last_seen = excluded.last_seen
+        last_seen = excluded.last_seen,
+        score = excluded.score,
+        band = excluded.band,
+        matched_kw = excluded.matched_kw
       RETURNING *
     `);
     this.findNewSinceStatement = database.prepare(`
@@ -64,6 +76,14 @@ export class JobRepository {
       UPDATE jobs SET status = 'dismissed' WHERE id = @id
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM jobs WHERE id = @id');
+    this.listOpenStatement = database.prepare(`
+      SELECT * FROM jobs WHERE status = 'open' ORDER BY id
+    `);
+    this.updateScoreStatement = database.prepare(`
+      UPDATE jobs
+      SET score = @score, band = @band, matched_kw = @matched_kw
+      WHERE id = @id
+    `);
   }
 
   /** Inserts a job or refreshes only its last-seen timestamp when already known. */
@@ -89,6 +109,21 @@ export class JobRepository {
   /** Finds jobs first discovered at or after an ISO timestamp. */
   public findNewSince(date: string): readonly JobRow[] {
     return this.findNewSinceStatement.all({ date });
+  }
+
+  /** Lists every currently open job for deterministic offline re-scoring. */
+  public listOpen(): readonly JobRow[] {
+    return this.listOpenStatement.all();
+  }
+
+  /** Persists a score computed by the pure scoring engine. */
+  public updateScore(input: JobScoreUpdate): JobRow {
+    this.updateScoreStatement.run(input);
+    const job = this.findByIdStatement.get({ id: input.id });
+    if (!job) {
+      throw new Error(`Job ${input.id} does not exist.`);
+    }
+    return job;
   }
 
   /** Reserves the lifecycle boundary for the two-run closure rule. */
