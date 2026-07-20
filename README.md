@@ -1,5 +1,8 @@
 # employed
 
+New user? Start with the [complete documentation handbook](docs/README.md), which walks through
+setup and every feature step by step.
+
 `employed` is a local-first job-search engine that watches companies you care about, discovers and
 scores new roles, and delivers a ranked report within 24 hours of posting. It maintains its scraper
 fleet, tracks applications from Gmail or manual commands, and turns the resulting event history into
