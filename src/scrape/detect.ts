@@ -1,6 +1,7 @@
 /** Defines the ATS detection seam implemented by the future scraping layer. */
 import type { ScrapeMethod } from '../db/index.js';
-import type { HttpClient } from '../util/http.js';
+import { RobotsDisallowedError } from '../util/errors.js';
+import type { HttpClient, RobotsGate } from '../util/http.js';
 import { matchSignatures } from './signatures.js';
 
 /** Result of inspecting a company careers URL for an ATS signature. */
@@ -17,10 +18,17 @@ export interface AtsDetector {
 
 /** Fetches a careers page and classifies it with the pure signature matcher. */
 export class SignatureDetector implements AtsDetector {
-  public constructor(private readonly http: HttpClient) {}
+  public constructor(
+    private readonly http: HttpClient,
+    private readonly robots?: RobotsGate,
+    private readonly respectRobots = false,
+  ) {}
 
   public async detect(careersUrl: string): Promise<DetectionResult> {
     try {
+      if (this.respectRobots && this.robots) {
+        await this.robots.assertAllowed(careersUrl);
+      }
       const result = await this.http.fetchText(careersUrl);
       if (result.status < 200 || result.status >= 300) {
         return unknownResult(`fetch failed: HTTP ${result.status}`);
@@ -32,6 +40,13 @@ export class SignatureDetector implements AtsDetector {
       }
       return match;
     } catch (error: unknown) {
+      if (error instanceof RobotsDisallowedError) {
+        return {
+          method: 'manual',
+          slug: null,
+          detail: error.message,
+        };
+      }
       const reason = error instanceof Error ? error.message : String(error);
       return unknownResult(`fetch failed: ${reason}`);
     }
