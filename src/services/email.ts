@@ -44,6 +44,15 @@ export class EmailService {
     private readonly config: EmailConfig,
     options: EmailServiceOptions = {},
   ) {
+    const missingField = [
+      ['email.to', config.to],
+      ['email.from', config.from],
+      ['email.smtp.host', config.smtp.host],
+      ['email.smtp.user', config.smtp.user],
+    ].find(([, value]) => !value?.trim());
+    if (missingField) {
+      throw new EmailError(`SMTP delivery is not configured: ${missingField[0]} is required.`);
+    }
     const environment = options.environment ?? process.env;
     const password = environment.EMPLOYED_SMTP_PASSWORD?.trim() || config.smtp.password.trim();
     if (!password) {
