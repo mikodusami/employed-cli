@@ -22,6 +22,7 @@ async function importCompanies(context: CommandContext, file?: string): Promise<
     detector: context.detector,
     ai: context.ai,
     config: context.config.loadApp(),
+    keywords: context.config.loadKeywords(),
   });
 
   try {
