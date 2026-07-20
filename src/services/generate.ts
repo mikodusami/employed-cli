@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 
 import { z } from 'zod';
 
+import { AiUnavailableError } from '../ai/errors.js';
 import { renderTemplate } from '../ai/templates.js';
 import type { AiRunner } from '../ai/types.js';
 import type { CompanyRow, Repositories } from '../db/index.js';
@@ -64,13 +65,21 @@ export class GenerateService {
     let finalReasons: readonly string[] = [];
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const config = await this.ai.runJson({
-        templateId: TEMPLATE_ID,
-        input: buildPrompt(company, distilled.dom, distilled.linkDensityHint, feedback),
-        inputDigest: attempt === 0 ? baseDigest : digest(`${baseDigest}\n${feedback}`),
-        schema: ScraperConfigSchema,
-        timeoutMs: AI_TIMEOUT_MS,
-      });
+      let config: ScraperConfig;
+      try {
+        config = await this.ai.runJson({
+          templateId: TEMPLATE_ID,
+          input: buildPrompt(company, distilled.dom, distilled.linkDensityHint, feedback),
+          inputDigest: attempt === 0 ? baseDigest : digest(`${baseDigest}\n${feedback}`),
+          schema: ScraperConfigSchema,
+          timeoutMs: AI_TIMEOUT_MS,
+        });
+      } catch (error: unknown) {
+        if (error instanceof AiUnavailableError) {
+          return { status: 'skipped', ok: false, reason: 'AI unavailable.' };
+        }
+        throw error;
+      }
       const execution = await executeAndValidate(this.http, company, config);
       if (execution.requiresRender) {
         const pendingConfig = { ...config, strategy: 'playwright' as const };
