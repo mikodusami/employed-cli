@@ -15,6 +15,8 @@ run:
   maxRetries: 3
   # Honor robots.txt while detecting non-API careers pages.
   respectRobots: true
+  # Generate a static scraper after adding an otherwise unsupported careers page.
+  autoGenerateOnAdd: true
 
 email:
   # Email integration is configured in a later layer.
