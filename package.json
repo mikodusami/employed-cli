@@ -13,6 +13,7 @@
     "test": "node --import tsx --test test/**/*.test.ts"
   },
   "dependencies": {
+    "@clack/prompts": "^1.7.0",
     "better-sqlite3": "^12.11.1",
     "chalk": "^5.4.1",
     "cheerio": "^1.2.0",
