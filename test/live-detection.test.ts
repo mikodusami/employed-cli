@@ -29,6 +29,18 @@ test(
     const adapterCases = [
       ['greenhouse', 'anthropic'],
       ['lever', 'highspot'],
+      ['ashby', 'linear'],
+      ['ashby', 'notion'],
+      ['ashby', 'ramp'],
+      ['smartrecruiters', 'Visa'],
+      ['smartrecruiters', 'Ubisoft2'],
+      ['smartrecruiters', 'BoschGroup'],
+      ['recruitee', 'freeday'],
+      ['recruitee', 'polaroid'],
+      ['recruitee', 'riverflex'],
+      ['workday', 'nvidia|wd5|NVIDIAExternalCareerSite'],
+      ['workday', 'salesforce|wd12|External_Career_Site'],
+      ['workday', 'citi|wd5|2'],
     ] as const;
     for (const [method, slug] of adapterCases) {
       const source = getSource(method, { http: new UndiciHttpClient() });
