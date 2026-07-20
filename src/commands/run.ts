@@ -19,7 +19,7 @@ export function register(program: Command, context: CommandContext): void {
   program
     .command('run')
     .description('scrape every scheduled company, score, and write the daily report')
-    .option('--email', 'send the daily report by email (reserved for a future layer)')
+    .option('--email', 'send the daily report by email, even when email.enabled is false')
     .option('--no-ai', 'disable AI generation, healing, and Gmail sync for this run')
     .option('--tier <tiers>', 'comma-separated tier override, e.g. A,B (ignores the schedule)')
     .action(async (options: RunCommandOptions) => runOrchestration(context, options));
@@ -51,15 +51,18 @@ async function runOrchestration(
       keywords: context.config.loadKeywords(),
     });
     const tiers = options.tier ? parseTiers(options.tier) : undefined;
-    const summary = await service.execute({ tiers });
+    const summary = await service.execute({ tiers, email: options.email });
     spinner.succeed(
       `Run complete: ${summary.companiesScanned} companies scanned, ${summary.jobsNew} new jobs, ` +
         `${summary.failures.length} failures`,
     );
     renderSummary(context, summary);
-    if (options.email) {
-      context.ui.info(
-        'Email delivery is reserved for a future layer; the report was written to disk.',
+    if (summary.email.sent) {
+      context.ui.info('Email digest sent.');
+    } else if (summary.email.error) {
+      context.ui.warn(
+        `Email delivery failed; the report remains at ${summary.reportPath}. ` +
+          `Fix: ${summary.email.error}`,
       );
     }
   } catch (error: unknown) {
