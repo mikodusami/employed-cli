@@ -22,6 +22,7 @@ export interface UI {
   warn(message: string): void;
   info(message: string): void;
   heading(message: string): void;
+  output(message: string): void;
   banner(): void;
   table(headers: string[], rows: string[][]): void;
 }
@@ -95,6 +96,10 @@ class AnimatedUI implements UI {
 
   public heading(message: string): void {
     console.log(chalk.bold.underline(message));
+  }
+
+  public output(message: string): void {
+    console.log(message);
   }
 
   public banner(): void {
@@ -173,6 +178,10 @@ class PlainUI implements UI {
   }
 
   public heading(message: string): void {
+    console.log(message);
+  }
+
+  public output(message: string): void {
     console.log(message);
   }
 
