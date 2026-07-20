@@ -8,6 +8,8 @@ const BANDS: readonly Band[] = ['A', 'B', 'C', 'D'];
 export interface BuildReportDependencies {
   repositories: Repositories;
   now: Date;
+  /** Orchestration-computed stats for the run just completed, bypassing the `runs` table read. */
+  runStats?: RunStats | null;
 }
 
 export function buildDailyReport(
@@ -35,9 +37,13 @@ export function buildDailyReport(
   }
 
   const brokenCompanies = companies.filter((company) => company.health === 'broken');
+  const runStats =
+    dependencies.runStats !== undefined
+      ? dependencies.runStats
+      : toRunStats(dependencies.repositories.runs.latest(), brokenCompanies.length);
   return {
     date,
-    runStats: toRunStats(dependencies.repositories.runs.latest(), brokenCompanies.length),
+    runStats,
     newJobsByBand,
     autoApplied: [],
     needsAttention: brokenCompanies.map((company) => ({
