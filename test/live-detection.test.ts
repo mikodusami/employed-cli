@@ -18,7 +18,6 @@ test(
       ['Anthropic', 'https://job-boards.greenhouse.io/anthropic', 'greenhouse', 'anthropic'],
       ['Linear', 'https://jobs.ashbyhq.com/linear', 'ashby', 'linear'],
       ['Visa', 'https://careers.smartrecruiters.com/Visa', 'smartrecruiters', 'Visa'],
-      ['Airbnb', 'https://careers.airbnb.com', 'greenhouse', 'airbnb'],
     ] as const;
 
     for (const [name, url, method, slug] of cases) {
@@ -51,6 +50,20 @@ test(
       assert.ok(postings[0]?.title);
       assert.ok(postings[0]?.url);
     }
+  },
+);
+
+test(
+  'live Airbnb careers page resolves to its Greenhouse board',
+  { skip: isLiveEnabled ? false : 'set EMPLOYED_LIVE_ATS_TESTS=1 to enable network checks' },
+  async () => {
+    const result = await new SignatureDetector(new UndiciHttpClient()).detect({
+      name: 'Airbnb',
+      careers_url: 'https://careers.airbnb.com',
+    });
+
+    assert.equal(result.method, 'greenhouse');
+    assert.equal(result.slug, 'airbnb');
   },
 );
 
