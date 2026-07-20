@@ -14,12 +14,13 @@ export const AppConfigSchema = z.object({
       enabled: z.boolean().default(false),
     })
     .default({ enabled: false }),
-  claude: z
+  ai: z
     .object({
+      provider: z.enum(['claude', 'codex', 'chatgpt']).default('claude'),
       enabled: z.boolean().default(true),
       maxCallsPerRun: z.number().int().min(0).default(10),
     })
-    .default({ enabled: true, maxCallsPerRun: 10 }),
+    .default({ provider: 'claude', enabled: true, maxCallsPerRun: 10 }),
 });
 
 /** Validated main application settings. */
