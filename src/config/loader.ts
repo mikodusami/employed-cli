@@ -1,5 +1,5 @@
 /** Loads, validates, and memoizes typed YAML configuration. */
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { parse as parseYaml } from 'yaml';
@@ -7,6 +7,7 @@ import { type ZodType, ZodError } from 'zod';
 
 import { EMPLOYED_DIR } from '../constants.js';
 import { ConfigError } from '../util/errors.js';
+import { KnownAtsSchema, type KnownAtsFile } from '../scrape/known-ats.js';
 import {
   AppConfigSchema,
   type AppConfig,
@@ -21,6 +22,7 @@ export class ConfigService {
   private appConfig?: AppConfig;
   private readonly companiesFiles = new Map<string, CompaniesFile>();
   private keywordsFile?: KeywordsFile;
+  private knownAtsFile?: KnownAtsFile;
 
   public constructor(private readonly baseDirectory = EMPLOYED_DIR) {}
 
@@ -56,6 +58,16 @@ export class ConfigService {
       KeywordsFileSchema,
     );
     return this.keywordsFile;
+  }
+
+  /** Loads optional, manually verified ATS mappings; absence means no overrides. */
+  public loadKnownAts(): KnownAtsFile {
+    if (this.knownAtsFile) {
+      return this.knownAtsFile;
+    }
+    const filePath = path.join(this.baseDirectory, 'known_ats.yaml');
+    this.knownAtsFile = existsSync(filePath) ? this.load(filePath, KnownAtsSchema) : {};
+    return this.knownAtsFile;
   }
 
   private load<Result>(filePath: string, schema: ZodType<Result>): Result {
