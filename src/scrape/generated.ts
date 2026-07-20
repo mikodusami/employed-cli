@@ -97,7 +97,8 @@ function extractField(
   if (!field) {
     return null;
   }
-  const selected = field.selector === ':scope' ? $(element) : $(element).find(field.selector).first();
+  const selected =
+    field.selector === ':scope' ? $(element) : $(element).find(field.selector).first();
   const value = field.attr === 'text' ? selected.text() : selected.attr(field.attr);
   return value?.trim() || null;
 }
