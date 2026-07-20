@@ -107,8 +107,8 @@ export class CompanyService {
   }
 
   /** Lists all registered companies in repository order. */
-  public list(): readonly CompanyRow[] {
-    return this.repositories.companies.list();
+  public list(): CompanyRow[] {
+    return [...this.repositories.companies.list()];
   }
 }
 
