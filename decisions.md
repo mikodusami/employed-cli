@@ -158,3 +158,25 @@ Detection is the only current non-API fetch, so it consults a memoized robots ga
 companies as manual. Tier-1 adapter APIs remain exempt. Migration 2 owns the persistent HTTP cache,
 while `--verbose` routes 304 diagnostics through the UI rather than printing inside infrastructure.
 HTTP construction remains lazy so help, version, and initialization do not require existing config.
+
+## 2026-07-20T00:42:00-04:00 — Provider-neutral AI execution boundary
+
+Features receive only the nullable `AiRunner` contract; provider selection, subprocess execution,
+fallback, output extraction, Zod validation, correction retry, budgeting, and caching stay behind
+that boundary. Cache keys include provider, versioned template ID, and semantic input digest. Cache
+hits are validated and free, while every real provider invocation—including the single correction
+attempt—consumes the shared per-process budget.
+
+Claude and Codex commands use argv-only subprocesses with no shell. Codex execution uses the current
+CLI's JSONL mode with ephemeral, read-only, and repository-check-bypass flags, as verified against
+the installed CLI and official Codex manual. Spawn-level termination escalates from `SIGTERM` to
+`SIGKILL`, and the runner adds an independent deadline guard. Provider failures and timeouts advance
+through configured preference order; validation and budget errors remain explicit typed outcomes.
+
+`employed doctor` is deliberately diagnostic: it reports enabled, installed, version, and active
+provider state plus SQLite path, migration version, table count, and integrity, while always exiting
+successfully. AI disabled in configuration produces a nullable runner and an explicit doctor note.
+
+The documented isolated-flow protocol exposed that `EMPLOYED_DIR` was previously a documentation-
+only convention. Path constants now honor a non-empty environment override before deriving all
+workspace paths, ensuring temporary user-flow workspaces are genuinely isolated from `~/.employed`.
