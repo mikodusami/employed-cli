@@ -59,3 +59,10 @@ weights remain positive magnitudes because the scoring formula applies the negat
 storing negative numbers would invert the penalty. Layer 2 owns only the validated configuration
 seed. Case-insensitive matching, scoring math, matched-keyword persistence, and score commands remain
 work for the later scoring-engine layer.
+
+## 2026-07-19T20:17:23-04:00 — Provider-agnostic AI configuration
+
+Application configuration uses an `ai` block with an explicit `claude`, `codex`, or `chatgpt`
+provider, defaulting to `claude`. This matches the already provider-neutral `ai_cache` table without
+introducing runner interfaces, provider implementations, or provider-dependent cache keys before
+their designated AI-runner layer.
