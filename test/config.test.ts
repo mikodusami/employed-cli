@@ -61,7 +61,12 @@ test('scaffold templates validate and existing user files are preserved', () => 
   const baseDirectory = mkdtempSync(path.join(tmpdir(), 'employed-config-'));
   const scaffold = new ScaffoldService(baseDirectory);
   const firstResult = scaffold.initialize();
-  assert.deepEqual(firstResult.created, ['config.yaml', 'companies.yaml', 'keywords.yaml']);
+  assert.deepEqual(firstResult.created, [
+    'config.yaml',
+    'companies.yaml',
+    'keywords.yaml',
+    'known_ats.yaml',
+  ]);
 
   const service = new ConfigService(baseDirectory);
   assert.equal(service.loadApp().run.concurrency, 4);
@@ -73,12 +78,18 @@ test('scaffold templates validate and existing user files are preserved', () => 
   assert.equal(keywords.description['machine learning'], 2);
   assert.equal(keywords.negative['10+ years'], 10);
   assert.equal(keywords.negative['phd required'], 6);
+  assert.deepEqual(service.loadKnownAts(), {});
 
   const configPath = path.join(baseDirectory, 'config.yaml');
   const originalConfig = readFileSync(configPath, 'utf8');
   const secondResult = scaffold.initialize();
   assert.deepEqual(secondResult.created, []);
-  assert.deepEqual(secondResult.skipped, ['config.yaml', 'companies.yaml', 'keywords.yaml']);
+  assert.deepEqual(secondResult.skipped, [
+    'config.yaml',
+    'companies.yaml',
+    'keywords.yaml',
+    'known_ats.yaml',
+  ]);
   assert.equal(readFileSync(configPath, 'utf8'), originalConfig);
 });
 
@@ -182,4 +193,22 @@ test('ConfigService loads and memoizes a custom company file path', () => {
   assert.equal(companies.defaults.tier, 'C');
   assert.equal(companies.companies[0]?.url, 'ftp://invalid-later');
   assert.strictEqual(service.loadCompanies(customPath), companies);
+});
+
+test('known ATS overrides are optional and malformed entries name their field', () => {
+  const absentDirectory = mkdtempSync(path.join(tmpdir(), 'employed-known-ats-absent-'));
+  assert.deepEqual(new ConfigService(absentDirectory).loadKnownAts(), {});
+
+  const invalidDirectory = mkdtempSync(path.join(tmpdir(), 'employed-known-ats-invalid-'));
+  writeFileSync(
+    path.join(invalidDirectory, 'known_ats.yaml'),
+    'airbnb:\n  method: unsupported\n  slug: ""\n',
+  );
+  assert.throws(
+    () => new ConfigService(invalidDirectory).loadKnownAts(),
+    (error: unknown) =>
+      error instanceof ConfigError &&
+      error.message.includes('airbnb.method') &&
+      error.message.includes('airbnb.slug'),
+  );
 });
