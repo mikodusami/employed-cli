@@ -48,6 +48,46 @@ export type AiConfig = z.infer<typeof AiConfigSchema>;
 /** AI coding-agent CLI supported by employed. */
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 
+/** SMTP delivery settings; the environment password is resolved outside the schema. */
+export const EmailConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    to: z.string().trim().default(''),
+    from: z.string().trim().default(''),
+    smtp: z
+      .object({
+        host: z.string().trim().default('smtp.gmail.com'),
+        port: z.number().int().min(1).max(65_535).default(465),
+        user: z.string().trim().default(''),
+        password: z.string().default(''),
+      })
+      .default({ host: 'smtp.gmail.com', port: 465, user: '', password: '' }),
+  })
+  .superRefine((email, context) => {
+    if (!email.enabled) {
+      return;
+    }
+    for (const [path, value] of [
+      ['to', email.to],
+      ['from', email.from],
+      ['smtp.host', email.smtp.host],
+      ['smtp.user', email.smtp.user],
+    ] as const) {
+      if (!value) {
+        context.addIssue({ code: 'custom', path: path.split('.'), message: 'is required' });
+      }
+    }
+  })
+  .default({
+    enabled: false,
+    to: '',
+    from: '',
+    smtp: { host: 'smtp.gmail.com', port: 465, user: '', password: '' },
+  });
+
+/** Validated SMTP digest-delivery settings. */
+export type EmailConfig = z.infer<typeof EmailConfigSchema>;
+
 /** Main application settings and their forward-compatible defaults. */
 export const AppConfigSchema = z.object({
   run: z
@@ -86,11 +126,7 @@ export const AppConfigSchema = z.object({
       heal: { maxPerCompany: 2, maxPerRun: 5 },
       playwright: { navTimeoutMs: 30_000 },
     }),
-  email: z
-    .object({
-      enabled: z.boolean().default(false),
-    })
-    .default({ enabled: false }),
+  email: EmailConfigSchema,
   ai: AiConfigSchema,
   stats: z
     .object({
