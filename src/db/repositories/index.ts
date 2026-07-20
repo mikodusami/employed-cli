@@ -16,4 +16,4 @@ export class Repositories {
 }
 
 export type { InsertCompanyInput } from './companies.js';
-export type { UpsertJobInput, UpsertJobResult } from './jobs.js';
+export type { JobInsertInput, UpsertJobInput, UpsertJobResult } from './jobs.js';
