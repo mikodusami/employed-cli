@@ -113,3 +113,18 @@ test('AI provider settings reject duplicate preferences and accept partial overr
   assert.equal(config.ai.providers.codex.enabled, false);
   assert.deepEqual(config.ai.preference, ['claude', 'codex']);
 });
+
+test('ConfigService loads and memoizes a custom company file path', () => {
+  const baseDirectory = mkdtempSync(path.join(tmpdir(), 'employed-custom-companies-'));
+  const customPath = path.join(baseDirectory, 'custom.yaml');
+  writeFileSync(
+    customPath,
+    'defaults:\n  tier: C\ncompanies:\n  - name: Example\n    url: ftp://invalid-later\n',
+  );
+  const service = new ConfigService('/unused-default-directory');
+  const companies = service.loadCompanies(customPath);
+
+  assert.equal(companies.defaults.tier, 'C');
+  assert.equal(companies.companies[0]?.url, 'ftp://invalid-later');
+  assert.strictEqual(service.loadCompanies(customPath), companies);
+});
