@@ -131,6 +131,11 @@ export class JobRepository {
     return this.listOpenStatement.all();
   }
 
+  /** Finds a job by id, or undefined when it does not exist. */
+  public findById(id: number): JobRow | undefined {
+    return this.findByIdStatement.get({ id });
+  }
+
   /** Lists open jobs first discovered on one calendar date. */
   public listOpenFirstSeenOn(date: string): readonly JobRow[] {
     return this.listOpenFirstSeenOnStatement.all({ date });

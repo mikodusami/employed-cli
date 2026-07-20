@@ -35,7 +35,7 @@ export class Repositories {
   }
 }
 
-export type { CreateApplicationInput } from './applications.js';
+export type { ApplicationFilter, CreateApplicationInput } from './applications.js';
 export type { InsertCompanyInput } from './companies.js';
 export type { MarkProcessedInput } from './email-threads.js';
 export type { AppendEventInput } from './events.js';

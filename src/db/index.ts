@@ -3,6 +3,7 @@ export { createDb, getDatabaseVersion, withTransaction } from './connection.js';
 export { Repositories } from './repositories/index.js';
 export type {
   AppendEventInput,
+  ApplicationFilter,
   CreateApplicationInput,
   FinishRunInput,
   InsertCompanyInput,

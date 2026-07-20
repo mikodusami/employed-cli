@@ -101,6 +101,11 @@ export class CompanyRepository {
     return this.findByNameStatement.get({ name });
   }
 
+  /** Finds a company by id, or undefined when it does not exist. */
+  public findById(id: number): CompanyRow | undefined {
+    return this.findByIdStatement.get({ id });
+  }
+
   /** Lists companies in priority and name order. */
   public list(): readonly CompanyRow[] {
     return this.listStatement.all();

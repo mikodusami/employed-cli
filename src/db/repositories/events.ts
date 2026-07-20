@@ -17,6 +17,10 @@ export class EventRepository {
     [{ application_id: number; at: string; type: EventType; note: string | null }],
     EventRow
   >;
+  private readonly listForApplicationStatement: Database.Statement<
+    [{ application_id: number }],
+    EventRow
+  >;
 
   public constructor(database: Database.Database) {
     this.appendStatement = database.prepare(`
@@ -24,6 +28,14 @@ export class EventRepository {
       VALUES (@application_id, @at, @type, @note)
       RETURNING *
     `);
+    this.listForApplicationStatement = database.prepare(`
+      SELECT * FROM events WHERE application_id = @application_id ORDER BY at, id
+    `);
+  }
+
+  /** Lists one application's full audit trail, oldest to newest. */
+  public listForApplication(applicationId: number): readonly EventRow[] {
+    return this.listForApplicationStatement.all({ application_id: applicationId });
   }
 
   /** Appends one immutable event row; events are never updated or deleted. */
