@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3';
 import type { Band, JobRow } from '../types.js';
 
 /** Values required to insert or refresh a job. */
-export interface UpsertJobInput {
+export interface JobInsertInput {
   company_id: number;
   title: string;
   location?: string | null;
@@ -18,6 +18,9 @@ export interface UpsertJobInput {
   band?: Band | null;
   matched_kw?: string | null;
 }
+
+/** Backward-compatible name for callers created before normalization was introduced. */
+export type UpsertJobInput = JobInsertInput;
 
 interface JobIdentityParameter {
   company_id: number;
@@ -33,7 +36,7 @@ export interface UpsertJobResult {
 /** Owns every SQL operation involving the jobs table. */
 export class JobRepository {
   private readonly existsStatement: Database.Statement<[JobIdentityParameter], { id: number }>;
-  private readonly upsertStatement: Database.Statement<[UpsertJobInput], JobRow>;
+  private readonly upsertStatement: Database.Statement<[JobInsertInput], JobRow>;
   private readonly findNewSinceStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly dismissStatement: Database.Statement<[{ id: number }], Database.RunResult>;
   private readonly findByIdStatement: Database.Statement<[{ id: number }], JobRow>;
@@ -64,10 +67,10 @@ export class JobRepository {
   }
 
   /** Inserts a job or refreshes only its last-seen timestamp when already known. */
-  public upsert(input: UpsertJobInput): UpsertJobResult {
+  public upsert(input: JobInsertInput): UpsertJobResult {
     const identity = { company_id: input.company_id, dedupe_key: input.dedupe_key };
     const isNew = this.existsStatement.get(identity) === undefined;
-    const parameters: UpsertJobInput = {
+    const parameters: JobInsertInput = {
       ...input,
       location: input.location ?? null,
       department: input.department ?? null,
