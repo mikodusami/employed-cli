@@ -169,7 +169,7 @@ test('robots denial marks detection manual while 404 allows detection', async ()
   const gate = new RobotsGate(disallowing);
   assert.equal(await gate.isAllowed('https://example.com/jobs/public/1'), true);
   const denied = await new SignatureDetector(disallowing, gate, true).detect(
-    'https://example.com/jobs/private',
+    { name: 'Private fixture', careers_url: 'https://example.com/jobs/private' },
   );
   assert.equal(denied.method, 'manual');
   assert.match(denied.detail ?? '', /robots\.txt disallows/);
@@ -185,7 +185,7 @@ test('robots denial marks detection manual while 404 allows detection', async ()
         },
   );
   const detected = await new SignatureDetector(allowing, new RobotsGate(allowing), true).detect(
-    'https://example.org/jobs',
+    { name: 'Allowed fixture', careers_url: 'https://example.org/jobs' },
   );
   assert.equal(detected.method, 'ashby');
 });
