@@ -22,6 +22,7 @@ interface ProgramOptions {
 async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
   const ui = createUI(isAnimationEnabled);
+  const http = new UndiciHttpClient();
   let database: ReturnType<typeof createDb> | undefined;
   let repositories: Repositories | undefined;
   const getDatabase = (): ReturnType<typeof createDb> => (database ??= createDb());
@@ -34,7 +35,8 @@ async function run(): Promise<void> {
     get repos() {
       return (repositories ??= new Repositories(getDatabase()));
     },
-    detector: new SignatureDetector(new UndiciHttpClient()),
+    detector: new SignatureDetector(http),
+    http,
   };
   const program = new Command()
     .name('employed')
