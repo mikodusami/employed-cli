@@ -2,5 +2,12 @@
 
 /** Removes tags and collapses whitespace while preserving readable text content. */
 export function stripHtmlTags(html: string): string {
-  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const decodedMarkup = html
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;/gi, ' ');
+  return decodedMarkup.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
