@@ -95,3 +95,52 @@ This flow applies only if you ran Layer 2 before the authoritative §6 schema wa
 3. Run `employed init --no-animation`.
 4. Confirm a new database is created at schema version 1.
 5. Run `npm test` and confirm all eleven persistence and configuration checks pass.
+
+## Layer 2, Unit 2 — Company registry and import
+
+Run `npm run build` and `employed init --no-animation` before these flows.
+
+### Flow 1: Add and detect a company
+
+1. Run `employed company add "Stripe" --url https://stripe.com/jobs --tier A --no-animation`.
+2. Confirm Stripe is added with `method: unknown` and the future-detection message.
+3. Run `employed company list --no-animation`.
+4. Confirm Stripe shows tier A, method unknown, health untested, and empty last-yield/success values.
+
+### Flow 2: Verify case-insensitive duplicate protection
+
+1. Run `employed company add "stripe" --url https://example.com/jobs --no-animation`.
+2. Confirm it reports Stripe is already registered and makes no changes.
+3. Run `employed company list --no-animation` and confirm only one Stripe row exists.
+
+### Flow 3: See clean URL validation
+
+1. Run `employed company add "Bad URL" --url ftp://example.com/jobs --no-animation`.
+2. Confirm the command exits unsuccessfully with `Careers URL must use http or https.`
+3. Confirm no stack trace is displayed and Bad URL does not appear in the company list.
+
+### Flow 4: Inspect automation-safe table output
+
+1. Run `employed company list | cat`.
+2. Confirm columns remain aligned and no color or spinner control characters appear.
+
+### Flow 5: Import a company file idempotently
+
+1. Add two valid entries to `~/.employed/companies.yaml` and run
+   `employed import --no-animation`.
+2. Confirm the summary reports two created, zero skipped, and zero failed.
+3. Run the same command again.
+4. Confirm the summary reports zero created, two skipped-duplicate, and zero failed.
+
+### Flow 6: Contain one malformed import entry
+
+1. Add a third entry whose URL is `ftp://example.com/jobs`.
+2. Run `employed import --no-animation`.
+3. Confirm valid entries are skipped as duplicates, the malformed entry is reported as failed by
+   name, and the command reaches its final summary.
+
+### Flow 7: Run the no-network service contracts
+
+1. Run `npm test`.
+2. Confirm all 19 tests pass, including company add, duplicate, malformed URL, partial batch,
+   custom config path, relative-time, and plain-table coverage.
