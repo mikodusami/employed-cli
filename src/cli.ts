@@ -2,8 +2,10 @@
 /** Creates the root command, selects the UI, and contains fatal CLI errors. */
 import { Command } from 'commander';
 
+import { buildAiRunner, type AiRunner } from './ai/index.js';
 import { ConfigService } from './config/index.js';
 import { register as registerCompany } from './commands/company.js';
+import { register as registerDoctor } from './commands/doctor.js';
 import { register as registerImport } from './commands/import.js';
 import { register as registerInit } from './commands/init.js';
 import { register as registerScan } from './commands/scan.js';
@@ -29,6 +31,8 @@ async function run(): Promise<void> {
   let repositories: Repositories | undefined;
   let http: HttpClient | undefined;
   let detector: AtsDetector | undefined;
+  let ai: AiRunner | null = null;
+  let isAiInitialized = false;
   const getDatabase = (): ReturnType<typeof createDb> => (database ??= createDb());
   const getHttp = (): HttpClient =>
     (http ??= buildHttpClient({
@@ -44,6 +48,17 @@ async function run(): Promise<void> {
       new RobotsGate(getHttp()),
       config.loadApp().run.respectRobots,
     ));
+  const getAi = (): AiRunner | null => {
+    if (!isAiInitialized) {
+      ai = buildAiRunner({
+        repos: repositories ??= new Repositories(getDatabase()),
+        config: config.loadApp(),
+        debug: process.argv.includes('--verbose') ? (message) => ui.info(message) : undefined,
+      });
+      isAiInitialized = true;
+    }
+    return ai;
+  };
   const context: CommandContext = {
     ui,
     config,
@@ -59,6 +74,9 @@ async function run(): Promise<void> {
     get http() {
       return getHttp();
     },
+    get ai() {
+      return getAi();
+    },
   };
   const program = new Command()
     .name('employed')
@@ -71,6 +89,7 @@ async function run(): Promise<void> {
   registerCompany(program, context);
   registerImport(program, context);
   registerScan(program, context);
+  registerDoctor(program, context);
 
   try {
     await program.parseAsync(process.argv);
