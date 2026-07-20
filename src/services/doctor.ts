@@ -263,14 +263,17 @@ export class DoctorService {
       jobsNew: run.jobs_new ?? 0,
       failures: countFailures(run.failures),
       level: incomplete ? 'problem' : countFailures(run.failures) > 0 ? 'warning' : 'ok',
-      fix: incomplete ? 'Inspect logs, remove a stale run lock if needed, then run `employed run`.' : null,
+      fix: incomplete
+        ? 'Inspect logs, remove a stale run lock if needed, then run `employed run`.'
+        : null,
     };
   }
 
   private inspectDatabase(): DatabaseDiagnostic {
     const tableCount = this.database
       .prepare<[], { count: number }>(
-        "SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        "SELECT COUNT(*) AS count FROM sqlite_schema WHERE type = 'table' " +
+          "AND name NOT LIKE 'sqlite_%'",
       )
       .get()?.count;
     const integrity = this.database.pragma('integrity_check', { simple: true }) as string;
@@ -282,7 +285,9 @@ export class DoctorService {
       tableCount: tableCount ?? 0,
       integrity,
       level: healthy ? 'ok' : 'problem',
-      fix: healthy ? null : 'Back up ~/.employed, then run `sqlite3 employed.db "PRAGMA integrity_check"`.',
+      fix: healthy
+        ? null
+        : 'Back up ~/.employed, then run `sqlite3 employed.db "PRAGMA integrity_check"`.',
     };
   }
 
@@ -292,7 +297,9 @@ export class DoctorService {
       return {
         ...status,
         level: status.installed ? 'ok' : 'warning',
-        fix: status.installed ? null : `Run \`employed schedule install --at ${this.config.run.time}\`.`,
+        fix: status.installed
+          ? null
+          : `Run \`employed schedule install --at ${this.config.run.time}\`.`,
       };
     } catch (error: unknown) {
       return {
