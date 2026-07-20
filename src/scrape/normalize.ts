@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import type { JobInsertInput } from '../db/index.js';
 import type { RawPosting } from './types.js';
 
-const REQUIREMENT_ID_PATTERN = /\(?(?:req|id|r-)[\s:#-]*\w+\)?/gi;
+const REQUIREMENT_ID_PATTERN = /\(?(?:req|id|r-)[\s:#-]*[\w-]+\)?/gi;
 
 /** Produces a stable lowercase title without source-specific requirement IDs. */
 export function normalizeTitle(title: string): string {
