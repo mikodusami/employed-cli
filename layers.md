@@ -1,3 +1,90 @@
+## Layer 6, Unit 3: `export` / `import-hq` + README + Animation Polish — The Finish Line
+
+**What this is:** The three things that turn a working system into a _shippable_ one — data portability (get your data out, migrate the old dashboard's data in), the README that lets anyone (including future-you and hackathon judges) clone and run it, and the animation polish pass that finally cashes in the UI abstraction you've carried since Unit 1. After this, `employed` is complete: M0→M6 done.
+
+The discipline: export/import are **data-integrity operations** — round-trip fidelity is non-negotiable, and import must be idempotent and non-destructive (never clobber existing data on a re-run). The polish pass touches _only_ the UI layer — because everything routed through it, making the whole app prettier is one file's worth of change, not a scavenger hunt.
+
+---
+
+**Deliverables:**
+
+**`src/services/export.ts` — `ExportService`:**
+
+```typescript
+exportJson(): EmployedExport;    // full snapshot: companies, jobs, applications, events
+exportCsv(kind: 'applications' | 'jobs'): string;
+```
+
+`exportJson` produces a versioned snapshot (`{ version: 1, exportedAt, companies, jobs, applications, events }`) — the `version` field is what lets a future schema change migrate old exports. This is your backup and your data-liberation guarantee: everything you've accumulated, portable, in one file. `exportCsv` for the spreadsheet-minded — applications with their key fields and current status, or jobs with scores/bands — the format you'd pull into Excel or hand to the HQ dashboard.
+
+**`src/commands/export.ts` — `employed export [--csv|--json] [--kind applications|jobs]`:**
+
+Default JSON to stdout or `--out <file>`. Clean, boring, reliable.
+
+**`src/services/import-hq.ts` — `ImportHqService` (§15, the migration):**
+
+Maps the "Job Search HQ" Cowork artifact's JSON export onto the schema — the §15 contract: `apps[]` → `applications` (+ synthesized `events`), `scoring` → `keywords.yaml`, `seen` → `email_threads`. So no tracked history is lost when the CLI takes over from the dashboard. Rules:
+
+- **Idempotent & non-destructive:** match incoming applications against existing (by company+role, or a stable id if HQ provides one); create missing, skip/merge existing — never duplicate, never overwrite newer local data. A dry-run (`--dry-run`) shows what _would_ change before committing.
+- **Synthesize events:** HQ likely stores status but not a full event log — generate a plausible initial `applied` event (+ a status event for the current state) per imported application so the CRM/stats invariants (event-log-is-truth) hold. Flag these as `imported` in the note so they're distinguishable from real captured history.
+- **Wrap in a transaction:** all-or-nothing; a malformed HQ file rolls back cleanly.
+
+**`src/commands/import-hq.ts` — `employed import-hq <backup.json> [--dry-run]`:**
+
+Load → validate the HQ shape (lenient zod — the artifact's export may drift) → dry-run summary or committed import with a report of created/merged/skipped counts.
+
+**`README.md` — the real one (§8.2, §13, §14 M6):**
+
+The document that makes the repo cloneable by someone who isn't you. Sections:
+
+- **What it is** — the one-paragraph pitch (jobs come to you, pre-filtered, from companies you care about, within 24h of posting).
+- **Prerequisites** — Node ≥20, and critically: **an AI CLI** — Claude Code _or_ Codex — with the person's own subscription/plan. State plainly this is required for generation/heal/Gmail; the tool runs in degraded mode without it (Tier-1 scraping still works). This is the honest "you need your own AI access" note.
+- **Quick start** — clone → `npm install` → `npx playwright install chromium` → `npm run build` → `npm link` → `employed init` → edit `companies.yaml` → `employed import companies.yaml` → `employed run`.
+- **Gmail setup** — the one-time MCP wiring, _both_ providers: `claude mcp add gmail ...` for Claude; the `~/.codex/config.toml` server entry for Codex. The delegation model explained in one line: employed never sees your Google credentials.
+- **Email digest setup** — the `EMPLOYED_SMTP_PASSWORD` env-var approach (recommended), Gmail app-password instructions.
+- **Scheduling** — `employed schedule install --at 07:00`, the launchd-fires-on-wake note for laptops.
+- **Command reference** — the full §11 surface, one line each.
+- **Configuration** — pointer to the self-documenting yaml files.
+- **How it works / architecture** — a short section with the §2 diagram and the tier/self-healing/provider-agnostic design highlights. This doubles as the **hackathon-submission story**: the provider-agnostic AI runner and the self-healing scraper fleet are the "thoughtful use of Codex/agents" narrative judges look for. Worth writing well.
+- **Privacy** — §13 in plain terms: local files, no Google creds held, AI sees only distilled public DOMs + email metadata.
+
+**Animation polish pass — `src/ui/` only:**
+
+Now the abstraction pays its final dividend. Upgrade `AnimatedUI` with zero changes to any call site:
+
+- **The `employed` banner** — the real one (the simple version from Unit 1 gets replaced). ASCII wordmark with a gradient (a small dependency like `gradient-string`, or hand-rolled ANSI) — shown on `run`, `new`, bare invocation. This is the "mountain-summit" energy of your other tools; make it feel like _yours_.
+- **Spinner refinement** — consistent spinner style, success/fail glyphs, timing (don't let spinners flash for sub-100ms operations — a min-duration or skip-if-instant so it reads smooth, not janky).
+- **Progress for `run`** — the multi-company loop gets a clean progress indication (count-based `[12/47] Datadog...` rather than 47 stacked spinners), still plain-fallback automatic for scheduled runs.
+- **Color consistency** — one palette, the band/health color maps unified, defined once.
+
+Everything remains behind the `--no-animation`/TTY/CI detection from Unit 1 — the polish is _only_ in the animated branch; plain output is untouched (still clean for logs and pipes).
+
+**Architectural notes:**
+
+- **Round-trip fidelity is the export bar:** `exportJson` then a hypothetical re-import must reconstruct equivalent state. Test it.
+- **Import is non-destructive and idempotent** — running `import-hq` twice changes nothing the second time; it never overwrites local data that's newer. This is a data-safety property, not a nicety — someone's real application history is at stake.
+- **Polish touches one layer.** If the animation pass tempts you to reach into a command file, the abstraction was leaking somewhere earlier — fix the leak, don't spread UI code. The whole point of carrying `UI` from Unit 1 was to make _this_ a single-file change.
+- The README's architecture section is doing double duty as portfolio/hackathon material — the provider-agnostic and self-healing designs are genuinely the interesting parts; document them as the deliberate engineering decisions they are.
+
+**Acceptance criteria:**
+
+- `export --json` produces a versioned snapshot; a full export→fresh-DB→import round-trip reconstructs equivalent companies/jobs/applications/events (fidelity proven).
+- `export --csv --kind applications` opens cleanly in a spreadsheet with correct columns.
+- `import-hq --dry-run` on a sample HQ backup reports created/merged/skipped without writing; committing then re-running the same file reports 100% skipped (idempotent, non-destructive proven).
+- Imported applications carry synthesized `applied` + status events tagged `imported`, satisfying the event-log invariant so `stats`/`board` treat them correctly.
+- A malformed HQ file rolls back with no partial write.
+- README walkthrough followed on a clean machine end-to-end produces a working `employed run` (the ultimate acceptance test — someone who isn't you can clone and run it).
+- Banner renders with gradient in TTY, absent in `--no-animation`/piped; `run` shows count-based progress live, plain lines when scheduled; no call site outside `src/ui/` changed in this pass.
+- All prior units' tests still green; full suite offline.
+
+---
+
+That's the build. **Layers 1–6, M0→M6 complete** — a self-maintaining, provider-agnostic, self-scheduling job-search engine with a Gmail-fed CRM and analytics, cloneable by anyone with their own AI CLI.
+
+A closing architectural note worth stating plainly, since you built it this way deliberately: nearly every "add a feature later" you might want — a 7th ATS adapter, a new email classification, an HTML report view, a third AI provider, a new analytics metric — is now a _single-file addition against an existing seam_, not a refactor. The registries, the renderer-per-model pattern, the provider interface, the pure-engine-plus-orchestration split — those weren't ceremony, they're what make the long-run tweaking-and-discarding you flagged at the very start actually cheap. Ship M0, then walk it up.
+
+Good luck with the Build Week submission.
+
 ## Layer 6, Unit 2: Email Digest Delivery (SMTP) + `employed doctor` Completion
 
 **What this is:** Two loose ends that make the daily loop reach your inbox and make the whole system self-diagnosable. Email delivery fills the reserved `--email` hook from Layer 4 Unit 3 — the report already exists as markdown, this just _delivers_ it. Doctor completion pulls every health signal the prior units have been recording into one diagnostic view — the answer to "is everything wired up and working," especially for someone who just cloned the repo.
