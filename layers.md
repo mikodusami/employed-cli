@@ -1,3 +1,79 @@
+## Layer 3, Unit 7: Playwright Strategy + Self-Healing Loop
+
+**What this is:** The two pieces that make the scraper fleet client-side-render-capable _and_ self-maintaining (§7.4). Playwright handles the pages static fetch can't; self-healing is the loop that regenerates rotted configs automatically, with Claude/Codex as the repair crew and the owner paged only when the AI is stumped. This closes out Layer 3 — after this, the scraping subsystem is feature-complete and maintains itself.
+
+---
+
+**Deliverables:**
+
+**New dependency:** `playwright` (chromium only — `npx playwright install chromium` documented as a setup step in README).
+
+**`src/scrape/browser.ts` — shared browser lifecycle:**
+
+```typescript
+export class BrowserPool {
+  async page<T>(fn: (page: Page) => Promise<T>): Promise<T>; // borrow→use→release
+  async close(): Promise<void>;
+}
+```
+
+One shared chromium instance per run (§10: "single shared browser per run"), lazily launched on first use — a run that touches zero Playwright companies never launches a browser. Per-page hardening from §10: block `image`/`font`/`media` resource types via routing, 30s nav timeout, `networkidle` wait. Pages are borrowed and released (not one browser per company — that's the 100× cost the tier system exists to avoid). `close()` called in the run's `finally`. Constructed once, added to scrape-layer deps (not `CommandContext` — only the scrape service needs it, keep the context lean).
+
+**`src/scrape/generated.ts` — extend the executor with the Playwright strategy:**
+
+Split the existing single executor by strategy. Refactor `GeneratedSource` so `strategy: 'static'` keeps the cheerio path (unchanged) and `strategy: 'playwright'` uses `BrowserPool`: navigate → wait for `listSelector` to appear (with timeout) → run the _same_ field-extraction logic against the rendered DOM (extract via `page.$$eval` or serialize rendered HTML back through the existing cheerio extractor — prefer the latter so **field extraction stays one code path** for both strategies; only _acquisition_ differs). Pagination the static path couldn't do now works:
+
+- `load-more-button` → click `value` selector, wait for network idle, repeat until button absent or `maxPages`
+- `infinite-scroll` → scroll to bottom, wait, repeat until scroll height stabilizes or `maxPages`
+- `next-link` / `url-param` → same as static but via navigation
+
+The `RequiresRenderError` that the static executor threw in Unit 6 is now caught upstream and re-routed here. `method` is `generated-playwright`.
+
+**Generation service update (`GenerateService`):** the `pendingPlaywright` path from Unit 6 completes — when static generation hits `RequiresRenderError` (or the AI returns `strategy: 'playwright'` directly), re-capture the page _with Playwright_ for distillation (client-rendered pages have empty static HTML — distilling the raw fetch would give the AI nothing), then run the same generate→validate gate against the Playwright executor. This is the §7.3-step-1 branch ("if fetched HTML has <3 job links, re-capture with Playwright") finally implemented.
+
+**`src/services/heal.ts` — `HealService` (§7.4, the defining reliability feature):**
+
+```typescript
+async heal(company: CompanyRow, runBudget: HealBudget): Promise<HealResult>;
+```
+
+Triggered by `ScrapeService` when a previously-`ok` company yields zero jobs or throws a parse error during a scan. The loop:
+
+1. **First failure** → `recordFailure` (increments `consecutive_failures`), `updateHealth('degraded')`. **Do not heal yet** — could be a transient outage (§7.4). Return `{ healed: false, deferred: true }`.
+2. **Second consecutive failure** → attempt heal, gated by `HealBudget`: max 2 attempts per company per run, max 5 heals per run globally (cost control at 150-company scale). The budget is a run-scoped counter object passed in — the `run` orchestration unit owns and threads it.
+3. **Heal path branches by method:**
+   - **ATS-method company** → re-run _detection_ first (companies migrate ATSes — §7.4). If detection now yields a different/valid ATS, adopt it, smoke-test, done. Only if detection fails fall through to generation.
+   - **generated-\* company** → re-run the full `GenerateService.generateFor` (the regeneration _is_ the heal).
+4. **Heal success** → `updateHealth('ok')`, reset `consecutive_failures`, return `{ healed: true, note: 'Datadog scraper regenerated' }` for the run log.
+5. **Heal failure** → `updateHealth('broken')`, return `{ healed: false }` → the run report surfaces it prominently so the owner notices (§7.4).
+
+Guard: `ctx.ai === null` → healing is skipped entirely (generation needs the brain); degraded companies stay degraded with a report note, never crash (§8.5). ATS re-detection _can_ still run without AI (it's pure signature matching) — so an AI-less heal can still fix an ATS migration, just not regenerate a custom scraper. Encode that asymmetry: try detection-heal even when AI is null; skip generation-heal when null.
+
+**`ScrapeService` integration:** `scrapeCompany` gains the failure→heal hookup. On a scrape that returns zero-from-a-previously-healthy company or throws: route to `HealService.heal(company, budget)`, then — if healed — _retry the scrape once_ within the same run so a self-healed company still contributes jobs today (not just next run). The budget prevents this from cascading. Wrap so a heal failure never aborts the surrounding scan (§12).
+
+**Config additions (additive):** `run.heal.maxPerCompany: 2`, `run.heal.maxPerRun: 5`, `run.playwright.navTimeoutMs: 30000`.
+
+**Architectural notes:**
+
+- Field extraction is **one path** across static and Playwright — the only strategy-divergent code is DOM acquisition and pagination-click mechanics. Enforce this; it's what keeps two rendering strategies from becoming two maintenance burdens.
+- Self-healing reuses `GenerateService` and `SignatureDetector` wholesale — heal is _orchestration of existing capabilities_, not new scraping logic. If `HealService` grows scraping logic of its own, something's wrong.
+- The heal trigger deliberately lives in `ScrapeService`, not scattered across commands — every path that scrapes (scan, run) gets healing for free.
+
+**Acceptance criteria:**
+
+- Playwright executor against a local fixture server (or recorded page) serving client-rendered jobs: extraction succeeds where static returned zero; `load-more` and `infinite-scroll` pagination reach page 2+ then terminate at cap
+- Resource blocking verified (no image/font requests in a captured network log); single browser instance across multiple companies in one run (assert launch count = 1)
+- Heal loop unit tests with fake services: first failure → degraded, no heal; second → heal attempted; ATS company re-detects before generating; generated company regenerates; success resets counter and retries scrape; failure → broken + report note
+- Heal budget: 6th heal in a run is refused with a budget note; 3rd attempt on one company refused
+- `ctx.ai === null`: generated-company heal skipped with note; ATS re-detection heal still runs
+- Simulated selector break (fixture): a config that worked, then a changed fixture that breaks it → 2nd run triggers heal → regenerated config extracts again (§14 M4 acceptance)
+- `BrowserPool.close()` always called even when a scrape throws (assert no leaked chromium process)
+- Suite offline except env-flagged live Playwright checks
+
+---
+
+That completes **Layer 3**. Say **next** for Layer 4, Unit 1: the scoring engine (§7.6) — pure engine, banding, `matched_kw`, and wiring it into the scrape pipeline.
+
 ## Layer 3, Unit 6: Tier-2/3 Scraper Generation — DOM Distiller, SCRAPER_GEN, Validation Gate, Executor
 
 **What this is:** The §7.3 machinery — turning an unknown careers page into a per-company `ScraperConfig` via the AI runner, then executing that config generically. This is the first _consumer_ of the AI runner from Unit 5, and the first use of cheerio. The defining discipline: a generated config is never trusted until it's executed and passes a validation gate. This unit covers the **static** strategy only; Playwright rendering is Unit 7.
@@ -25,7 +101,7 @@ Using cheerio: strip `<script>`, `<style>`, `<svg>`, comments; strip all attribu
 
 **`prompts/scraper_gen_v1.txt` — the SCRAPER_GEN template (§8.6-A):**
 
-Ships here (its consuming unit, per the Unit 5 convention). Placeholders: `{company}`, `{url}`, `{schema}` (the JSON-schema rendering of `ScraperConfig`), `{retry_feedback}`, `{dom}`. The retry-feedback slot is filled by the runner's own retry mechanism — but SCRAPER_GEN _also_ has a domain-level retry (validation-gate failure, below), distinct from the runner's JSON-parse retry. Keep these two retry concepts clearly separated in comments: runner retry = "your JSON was malformed"; generator retry = "your JSON was valid but the scraper it described didn't work."
+Ships here (its consuming unit, per the Unit 5 convention). Placeholders: `{company}`, `{url}`, `{schema}` (the JSON-schema rendering of `ScraperConfig`), `{retry_feedback}`, `{dom}`. The retry-feedback slot is filled by the runner's own retry mechanism — but SCRAPER*GEN \_also* has a domain-level retry (validation-gate failure, below), distinct from the runner's JSON-parse retry. Keep these two retry concepts clearly separated in comments: runner retry = "your JSON was malformed"; generator retry = "your JSON was valid but the scraper it described didn't work."
 
 **`src/scrape/generated.ts` — the executor, `GeneratedSource implements ScrapeSource`:**
 
