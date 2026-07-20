@@ -1,0 +1,21 @@
+{
+  "jobs": [
+    {
+      "id": "ashby-101",
+      "title": "Software Engineer",
+      "jobUrl": "https://jobs.ashbyhq.com/example/ashby-101",
+      "applyUrl": "https://jobs.ashbyhq.com/example/ashby-101/application",
+      "location": "New York, NY",
+      "department": "Engineering",
+      "descriptionPlain": "Build reliable products.",
+      "unknownFutureField": true
+    },
+    {
+      "id": "ashby-102",
+      "title": "Product Engineer",
+      "applyUrl": "https://jobs.ashbyhq.com/example/ashby-102/application",
+      "team": "Product",
+      "descriptionHtml": "<p>Shape the roadmap.</p>"
+    }
+  ]
+}
