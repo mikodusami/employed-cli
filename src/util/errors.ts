@@ -11,6 +11,9 @@ export class AppError extends Error {
 /** Indicates invalid user or configuration input. */
 export class ValidationError extends AppError {}
 
+/** Indicates a network or timeout failure before an HTTP response was received. */
+export class HttpError extends AppError {}
+
 /** Indicates a configuration read, parse, or validation failure. */
 export class ConfigError extends AppError {
   public constructor(
