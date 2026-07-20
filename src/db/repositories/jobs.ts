@@ -48,6 +48,7 @@ export class JobRepository {
   private readonly dismissStatement: Database.Statement<[{ id: number }], Database.RunResult>;
   private readonly findByIdStatement: Database.Statement<[{ id: number }], JobRow>;
   private readonly listOpenStatement: Database.Statement<[], JobRow>;
+  private readonly listOpenFirstSeenOnStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly updateScoreStatement: Database.Statement<[JobScoreUpdate], Database.RunResult>;
 
   public constructor(database: Database.Database) {
@@ -78,6 +79,11 @@ export class JobRepository {
     this.findByIdStatement = database.prepare('SELECT * FROM jobs WHERE id = @id');
     this.listOpenStatement = database.prepare(`
       SELECT * FROM jobs WHERE status = 'open' ORDER BY id
+    `);
+    this.listOpenFirstSeenOnStatement = database.prepare(`
+      SELECT * FROM jobs
+      WHERE status = 'open' AND date(first_seen) = date(@date)
+      ORDER BY id
     `);
     this.updateScoreStatement = database.prepare(`
       UPDATE jobs
@@ -114,6 +120,11 @@ export class JobRepository {
   /** Lists every currently open job for deterministic offline re-scoring. */
   public listOpen(): readonly JobRow[] {
     return this.listOpenStatement.all();
+  }
+
+  /** Lists open jobs first discovered on one calendar date. */
+  public listOpenFirstSeenOn(date: string): readonly JobRow[] {
+    return this.listOpenFirstSeenOnStatement.all({ date });
   }
 
   /** Persists a score computed by the pure scoring engine. */
