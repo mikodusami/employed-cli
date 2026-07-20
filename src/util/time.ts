@@ -8,7 +8,7 @@ const YEAR_MS = 365 * DAY_MS;
 
 /** Converts an ISO timestamp into a compact relative label such as `2d ago`. */
 export function relativeTime(value: string | Date, now = new Date()): string {
-  const date = value instanceof Date ? value : new Date(value);
+  const date = value instanceof Date ? value : parseTimestamp(value);
   if (Number.isNaN(date.getTime())) {
     return 'unknown';
   }
@@ -32,4 +32,9 @@ export function relativeTime(value: string | Date, now = new Date()): string {
   ];
   const amount = Math.floor(absoluteMs / unitMs);
   return differenceMs >= 0 ? `${amount}${suffix} ago` : `in ${amount}${suffix}`;
+}
+
+function parseTimestamp(value: string): Date {
+  const sqliteUtcPattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+  return new Date(sqliteUtcPattern.test(value) ? `${value.replace(' ', 'T')}Z` : value);
 }
