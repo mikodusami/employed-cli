@@ -2,6 +2,27 @@
 
 Run these flows from the repository root after `npm install` and `npm run build`.
 
+## Isolated-state protocol (applies to every user flow)
+
+Each numbered flow is independent: do not carry its companies, jobs, configuration edits, or database
+into the next flow. Before its first command, run:
+
+```bash
+export EMPLOYED_DIR="$(mktemp -d)"
+employed init --no-animation
+```
+
+This creates an empty, disposable Employed workspace. After the flow's assertions, run:
+
+```bash
+rm -rf "$EMPLOYED_DIR"
+unset EMPLOYED_DIR
+```
+
+The cleanup removes only the directory created for that flow and prevents its location from leaking
+into later shell commands. For a flow with prerequisite data, create that data within the same flow;
+do not assume a preceding flow has run.
+
 ### Flow 1: Discover the CLI
 
 1. Run `employed --help`.
@@ -42,14 +63,13 @@ Run these flows from the repository root after `npm install` and `npm run build`
 
 ## Layer 2 — Configuration and SQLite persistence
 
-Run these flows after `npm run build`. They operate on `~/.employed`; back up that directory first
-if it already contains data you care about.
+Run these flows after `npm run build`; the isolated-state protocol supplies a fresh `EMPLOYED_DIR`.
 
 ### Flow 1: Initialize a fresh workspace
 
 1. Run `employed init --no-animation`.
 2. Confirm the command reports valid configuration and database schema version 1.
-3. Confirm `~/.employed` contains `config.yaml`, `companies.yaml`, `keywords.yaml`, `employed.db`,
+3. Confirm `$EMPLOYED_DIR` contains `config.yaml`, `companies.yaml`, `keywords.yaml`, `employed.db`,
    `reports/`, and `logs/`.
 4. Open the YAML files and confirm their comments explain the available settings.
 5. Confirm `keywords.yaml` includes `new grad: 6`, `machine learning: 2`, and
@@ -61,21 +81,21 @@ if it already contains data you care about.
 
 ### Flow 2: Prove initialization is idempotent
 
-1. Add a comment to `~/.employed/config.yaml`.
+1. Add a comment to `$EMPLOYED_DIR/config.yaml`.
 2. Run `employed init --no-animation` again.
 3. Confirm it says the workspace is already initialized and no files were changed.
 4. Confirm your added comment is still present.
 
 ### Flow 3: Recover a partially initialized workspace
 
-1. Move one generated YAML file out of `~/.employed` temporarily.
+1. Move one generated YAML file out of `$EMPLOYED_DIR` temporarily.
 2. Run `employed init --no-animation`.
 3. Confirm only the missing file is recreated and the other two are reported as preserved.
 4. Restore your original file if it contained edits you want to keep.
 
 ### Flow 4: See an actionable validation error
 
-1. Set `run.concurrency` to `99` in `~/.employed/config.yaml`.
+1. Set `run.concurrency` to `99` in `$EMPLOYED_DIR/config.yaml`.
 2. Run `employed init --no-animation`.
 3. Confirm the error names `config.yaml`, identifies `run.concurrency`, and exits unsuccessfully.
 4. Restore concurrency to a value from 1 through 10 and rerun init successfully.
@@ -90,15 +110,15 @@ if it already contains data you care about.
 
 This flow applies only if you ran Layer 2 before the authoritative §6 schema was supplied.
 
-1. Back up `~/.employed/employed.db` if it contains data you want to inspect later.
-2. Move the old database outside `~/.employed`.
+1. Back up `$EMPLOYED_DIR/employed.db` if it contains data you want to inspect later.
+2. Move the old database outside `$EMPLOYED_DIR`.
 3. Run `employed init --no-animation`.
 4. Confirm a new database is created at schema version 1.
 5. Run `npm test` and confirm all eleven persistence and configuration checks pass.
 
 ## Layer 2, Unit 2 — Company registry and import
 
-Run `npm run build` and `employed init --no-animation` before these flows.
+Run `npm run build`; then use the isolated-state protocol before each flow.
 
 ### Flow 1: Add and detect a company
 
@@ -109,9 +129,10 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 
 ### Flow 2: Verify case-insensitive duplicate protection
 
-1. Run `employed company add "stripe" --url https://example.com/jobs --no-animation`.
-2. Confirm it reports Stripe is already registered and makes no changes.
-3. Run `employed company list --no-animation` and confirm only one Stripe row exists.
+1. Add Stripe with `employed company add "Stripe" --url https://stripe.com/jobs --tier A --no-animation`.
+2. Run `employed company add "stripe" --url https://example.com/jobs --no-animation`.
+3. Confirm it reports Stripe is already registered and makes no changes.
+4. Run `employed company list --no-animation` and confirm only one Stripe row exists.
 
 ### Flow 3: See clean URL validation
 
@@ -121,12 +142,13 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 
 ### Flow 4: Inspect automation-safe table output
 
-1. Run `employed company list | cat`.
-2. Confirm columns remain aligned and no color or spinner control characters appear.
+1. Add Stripe with `employed company add "Stripe" --url https://stripe.com/jobs --tier A --no-animation`.
+2. Run `employed company list | cat`.
+3. Confirm columns remain aligned and no color or spinner control characters appear.
 
 ### Flow 5: Import a company file idempotently
 
-1. Add two valid entries to `~/.employed/companies.yaml` and run
+1. Add two valid entries to `$EMPLOYED_DIR/companies.yaml` and run
    `employed import --no-animation`.
 2. Confirm the summary reports two created, zero skipped, and zero failed.
 3. Run the same command again.
@@ -134,10 +156,11 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 
 ### Flow 6: Contain one malformed import entry
 
-1. Add a third entry whose URL is `ftp://example.com/jobs`.
+1. Add two valid entries and one entry whose URL is `ftp://example.com/jobs` to
+   `$EMPLOYED_DIR/companies.yaml`.
 2. Run `employed import --no-animation`.
-3. Confirm valid entries are skipped as duplicates, the malformed entry is reported as failed by
-   name, and the command reaches its final summary.
+3. Confirm the two valid entries are created, the malformed entry is reported as failed by name,
+   and the command reaches its final summary.
 
 ### Flow 7: Run the no-network service contracts
 
@@ -190,15 +213,18 @@ Run `npm run build` and `employed init --no-animation` before these flows.
 
 ### Flow 2: Scan and display new Lever jobs
 
-1. Run `employed scan --company Highspot --no-animation`.
-2. Confirm the summary reports a nonzero seen count and the same number of new jobs.
-3. Confirm the new-job table contains title, location, and URL columns.
+1. Add Highspot from `https://jobs.lever.co/highspot`.
+2. Run `employed scan --company Highspot --no-animation`.
+3. Confirm the summary reports a nonzero seen count and the same number of new jobs.
+4. Confirm the new-job table contains title, location, and URL columns.
 
 ### Flow 3: Prove end-to-end deduplication
 
-1. Immediately run `employed scan --company Highspot --no-animation` again.
-2. Confirm it reports the same seen count and `0 new`.
-3. Confirm no new-job table is printed on the second run.
+1. Add Highspot from `https://jobs.lever.co/highspot`.
+2. Run `employed scan --company Highspot --no-animation` once to establish the initial jobs.
+3. Immediately run `employed scan --company Highspot --no-animation` again.
+4. Confirm it reports the same seen count and `0 new`.
+5. Confirm no new-job table is printed on the second run.
 
 ### Flow 4: Distinguish an unsupported source
 
