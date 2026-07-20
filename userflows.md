@@ -1271,3 +1271,77 @@ output for a title is not a reliable way to confirm one specific job was exclude
 5. Confirm `a database with zero applications renders every rate as null, not NaN` passes.
 6. Confirm all four `sparkline` tests pass: 12-bucket scaling, the all-zero flat line, a single
    spike, and the empty-series case.
+
+# Layer 6, Unit 2 — SMTP email digest and completed doctor
+
+Every stateful flow below starts from a blank workspace and destroys it afterward. Run
+`npm run build` first so the globally linked `employed` binary uses the latest `dist` output.
+
+### Flow 1: Inspect the safe default SMTP template
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Open `$EMPLOYED_DIR/config.yaml` and confirm `email.enabled` is false, Gmail host/port defaults
+   are present, the environment-password export is recommended, and plaintext `password` is
+   commented out.
+4. Run `employed doctor --no-animation` and confirm Email / SMTP says disabled with setup guidance;
+   this warning still exits zero.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Verify SMTP and receive a real digest
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Edit `$EMPLOYED_DIR/config.yaml`: set `email.enabled: true`, fill `to`, `from`, and `smtp.user`,
+   and leave the plaintext password commented out.
+4. Run `export EMPLOYED_SMTP_PASSWORD="<YOUR_SMTP_APP_PASSWORD>"`.
+5. Run `employed doctor --no-animation`; confirm Email / SMTP is enabled and reachable.
+6. Run `employed run --email --no-ai --no-animation`; confirm the local report is written first and
+   the command reports `Email digest sent.`.
+7. Confirm the inbox received a multipart digest whose subject states total new roles, A-band
+   count, and today's date.
+8. Run `unset EMPLOYED_SMTP_PASSWORD`.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Confirm forced email failure never loses or fails a run
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Leave email disabled and unconfigured, then run
+   `employed run --email --no-ai --no-animation`.
+4. Confirm the run completes successfully, warns that `email.to` is required, and prints the path
+   of the report that remains available on disk.
+5. Open today's file under `$EMPLOYED_DIR/reports` and confirm it is a complete Markdown report.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Surface a broken scraper and crashed run in doctor
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "INSERT INTO companies
+   (name,careers_url,health,consecutive_failures,created_at) VALUES
+   ('Broken Board','https://example.com/jobs','broken',2,CURRENT_TIMESTAMP);"`.
+4. Run `sqlite3 "$EMPLOYED_DIR/employed.db" "INSERT INTO runs (started_at)
+   VALUES (datetime('now','-1 hour'));"` to create an intentionally incomplete run record.
+5. Run `employed doctor --no-animation`; confirm it exits zero, names Broken Board with a generate
+   command, and flags the null `finished_at` with run-recovery guidance.
+6. Run `employed doctor --strict --no-animation`; confirm the same diagnostics render and the exit
+   status is nonzero.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Verify all offline delivery and diagnostic boundaries
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `npm test` without live-test environment variables.
+4. Confirm the email tests prove environment-password precedence, multipart content, HTML escaping,
+   omitted empty sections, typed send failure, and non-throwing verification status.
+5. Confirm the run test proves an SMTP failure leaves the report readable and closes the run row.
+6. Confirm the doctor test surfaces Gmail, SMTP, broken-fleet, crashed-run, and scheduler guidance
+   while SQLite `total_changes()` remains unchanged.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
