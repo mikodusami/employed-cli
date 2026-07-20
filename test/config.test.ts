@@ -24,7 +24,12 @@ test('schemas populate every top-level configuration section from an empty mappi
       heal: { maxPerCompany: 2, maxPerRun: 5 },
       playwright: { navTimeoutMs: 30_000 },
     },
-    email: { enabled: false },
+    email: {
+      enabled: false,
+      to: '',
+      from: '',
+      smtp: { host: 'smtp.gmail.com', port: 465, user: '', password: '' },
+    },
     ai: {
       enabled: true,
       preference: ['claude', 'codex'],
@@ -127,6 +132,41 @@ test('AI provider settings reject duplicate preferences and accept partial overr
   assert.equal(config.ai.providers.claude.enabled, true);
   assert.equal(config.ai.providers.codex.enabled, false);
   assert.deepEqual(config.ai.preference, ['claude', 'codex']);
+});
+
+test('enabled email requires delivery fields and an SMTP password', () => {
+  assert.throws(
+    () => AppConfigSchema.parse({ email: { enabled: true } }),
+    /is required/,
+  );
+
+  const baseDirectory = mkdtempSync(path.join(tmpdir(), 'employed-email-config-'));
+  writeFileSync(
+    path.join(baseDirectory, 'config.yaml'),
+    [
+      'email:',
+      '  enabled: true',
+      '  to: recipient@example.com',
+      '  from: sender@example.com',
+      '  smtp:',
+      '    user: sender@example.com',
+    ].join('\n'),
+  );
+  const previousPassword = process.env.EMPLOYED_SMTP_PASSWORD;
+  delete process.env.EMPLOYED_SMTP_PASSWORD;
+  try {
+    assert.throws(
+      () => new ConfigService(baseDirectory).loadApp(),
+      (error: unknown) =>
+        error instanceof ConfigError && error.message.includes('EMPLOYED_SMTP_PASSWORD'),
+    );
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.EMPLOYED_SMTP_PASSWORD;
+    } else {
+      process.env.EMPLOYED_SMTP_PASSWORD = previousPassword;
+    }
+  }
 });
 
 test('ConfigService loads and memoizes a custom company file path', () => {
