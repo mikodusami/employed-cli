@@ -179,11 +179,33 @@ export type CompaniesFile = z.infer<typeof CompaniesFileSchema>;
 
 const KeywordWeightsSchema = z.record(z.string(), z.number()).default({});
 
-/** Weighted job-scoring keyword groups. */
+/**
+ * Binary disqualifiers, distinct from `negative` (which only scores). Defaults are permissive —
+ * empty lists and an empty allow-list mean no filtering — so existing behavior is unchanged
+ * until a user opts in by populating these.
+ */
+const HardExcludeSchema = z
+  .object({
+    title: z.array(z.string()).default([]),
+    description: z.array(z.string()).default([]),
+  })
+  .default({ title: [], description: [] });
+
+const LocationsSchema = z
+  .object({
+    allow: z.array(z.string()).default([]),
+    block: z.array(z.string()).default([]),
+    allowUnknownLocation: z.boolean().default(true),
+  })
+  .default({ allow: [], block: [], allowUnknownLocation: true });
+
+/** Weighted job-scoring keyword groups, plus the hard-exclude/location suppression gate. */
 export const KeywordsFileSchema = z.object({
   title: KeywordWeightsSchema,
   description: KeywordWeightsSchema,
   negative: KeywordWeightsSchema,
+  hardExclude: HardExcludeSchema,
+  locations: LocationsSchema,
 });
 
 /** Validated keyword scoring profile. */

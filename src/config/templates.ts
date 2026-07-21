@@ -85,6 +85,8 @@ export const KNOWN_ATS_TEMPLATE = `# Optional ATS overrides, keyed by lowercase 
 
 /** Authoritative §7.6 keyword profile used to score job relevance. */
 export const KEYWORDS_TEMPLATE = `# Weighted phrases used by the scoring layer.
+# Matching is case-insensitive and word-boundary-aware (a whole-word/whole-phrase match, not a
+# raw substring) — so "ai" fires on "AI Engineer" but not inside "maintaining" or "domain".
 title:
   new grad: 6
   software engineer: 5
@@ -98,6 +100,13 @@ title:
   backend: 3
   product: 2
   frontend: 2
+  # Some companies signal early-career eligibility indirectly rather than stating "new grad" —
+  # these phrases catch that. Add more as you notice postings that scored lower than they should
+  # have.
+  new college grad: 6
+  university grad: 5
+  recent graduate: 5
+  class of 2026: 5
 
 description:
   python: 3
@@ -113,6 +122,12 @@ description:
   mentorship: 2
   docker: 1
   ci/cd: 1
+  # Indirect early-career signals (see the note under "title" above).
+  equivalent practical experience: 3
+  bachelor's degree: 2
+  0-2 years: 3
+  no experience required: 3
+  new grad program: 4
 
 negative:
   10+ years: 10
@@ -125,4 +140,27 @@ negative:
   5+ years: 6
   security clearance: 6
   phd required: 6
+
+# Hard exclusions: any match removes the job from reports entirely
+# (distinct from "negative" above, which only lowers score/band).
+# Auto-filtered jobs are still stored (for dedupe/history/retuning) but marked dismissed with a
+# reason; review with \`employed new --show-filtered\`, undo one with \`employed restore <jobId>\`.
+hardExclude:
+  title:
+    - senior
+    - staff
+    - principal
+    - director
+    - "10+ years"
+    - "7+ years"
+  description:
+    - "phd required"
+    - "security clearance"
+
+# Location gate. Leave "allow" empty to permit any location; fill it in
+# to restrict. "block" always wins over "allow".
+locations:
+  allow: []              # e.g. ["united states", "usa", "remote"]
+  block: []               # e.g. ["india", "united kingdom"]
+  allowUnknownLocation: true   # jobs with no location field are kept, not excluded
 `;
