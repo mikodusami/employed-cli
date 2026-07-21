@@ -228,7 +228,13 @@ export class DoctorService {
   }
 
   private inspectFleet(): FleetDiagnostic {
-    const counts: Record<Health, number> = { ok: 0, degraded: 0, broken: 0, untested: 0 };
+    const counts: Record<Health, number> = {
+      ok: 0,
+      degraded: 0,
+      broken: 0,
+      'manual-review': 0,
+      untested: 0,
+    };
     const issues: FleetIssue[] = [];
     for (const company of this.repositories.companies.list()) {
       counts[company.health] += 1;
@@ -237,7 +243,7 @@ export class DoctorService {
       if (company.health === 'ok' && !isLowConfidence) {
         continue;
       }
-      const level = company.health === 'broken' ? 'problem' : 'warning';
+      const level = ['broken', 'manual-review'].includes(company.health) ? 'problem' : 'warning';
       issues.push({
         company: company.name,
         health: company.health,
