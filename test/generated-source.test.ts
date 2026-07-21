@@ -6,6 +6,7 @@ import type { Page } from 'playwright';
 
 import { BrowserPool } from '../src/scrape/browser.js';
 import type { ScraperConfig } from '../src/scrape/config.js';
+import type { DomPlan } from '../src/scrape/plan.js';
 import { GeneratedSource, PlaywrightGeneratedSource } from '../src/scrape/generated.js';
 import type { CompanyRow } from '../src/db/index.js';
 import { RequiresRenderError } from '../src/util/errors.js';
@@ -113,6 +114,23 @@ test('playwright infinite scroll stops when document height stabilizes', async (
 
   assert.equal((await source.fetchPostings(company())).length, 3);
   assert.equal(rendered.scrolls, 2);
+});
+
+test('playwright executes bounded declarative navigation before extraction', async () => {
+  const rendered = renderedPage(pageOne, pageOne);
+  const plan: DomPlan = {
+    ...config('none', null, 1),
+    mode: 'dom',
+    planVersion: 2,
+    strategy: 'playwright',
+    navigate: [
+      { action: 'goto', target: '/open-roles' },
+      { action: 'waitFor', target: 'article.job' },
+    ],
+  };
+  const source = new PlaywrightGeneratedSource(new RenderedPool(rendered.page), plan);
+
+  assert.equal((await source.fetchPostings(company())).length, 2);
 });
 
 class RenderedPool extends BrowserPool {
