@@ -1,4 +1,4 @@
-/** Pure weighted substring scoring for one normalized or raw job posting. */
+/** Pure weighted, word-boundary-aware scoring for one normalized or raw job posting. */
 import type { KeywordsFile } from '../config/schema.js';
 import type { Band } from '../db/types.js';
 
@@ -17,6 +17,21 @@ export interface ScoreResult {
   band: Band;
   matchedKeywords: string[];
   titleOnly: boolean;
+}
+
+/**
+ * Builds a case-insensitive, word-boundary-aware matcher for one keyword.
+ *
+ * @remarks `\b` is defined relative to `\w` (letters, digits, underscore), not relative to the
+ * keyword's own characters — so a keyword containing a non-word character at its edge, like
+ * `ci/cd`, still matches correctly: the boundary applies where the keyword touches the
+ * surrounding text (start/end of string or a transition to/from a word character), not inside
+ * the keyword itself. This is shared by title/description/negative matching (`weightedMatches`
+ * below) and the hard-exclude/location filter (`score/filter.ts`) — one matcher for the layer.
+ */
+export function buildKeywordRegex(keyword: string): RegExp {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i');
 }
 
 /** Scores a job without I/O, persistence, clocks, or provider calls. */
@@ -60,7 +75,7 @@ function weightedMatches(
 ): number {
   let subtotal = 0;
   for (const [keyword, weight] of Object.entries(keywords)) {
-    if (text.includes(keyword.toLowerCase())) {
+    if (buildKeywordRegex(keyword).test(text)) {
       subtotal += weight * multiplier;
       matches.add(keyword);
     }
