@@ -4,6 +4,7 @@ import { RobotsDisallowedError } from '../util/errors.js';
 import type { FetchResult, HttpClient, RobotsGate } from '../util/http.js';
 import { findJobBrowseLinks, findJobDetailLinks } from './crawl.js';
 import type { KnownAtsFile } from './known-ats.js';
+import { NO_STAGE_REPORTER, type StageReporter } from './progress.js';
 import { matchSignatures, type SignatureMatch } from './signatures.js';
 
 export const MAX_DETECTION_REQUESTS = 5;
@@ -39,6 +40,7 @@ export class SignatureDetector implements AtsDetector {
     private readonly robots?: RobotsGate,
     private readonly respectRobots = false,
     knownAts: KnownAtsFile = {},
+    private readonly report: StageReporter = NO_STAGE_REPORTER,
   ) {
     this.knownAts = Object.fromEntries(
       Object.entries(knownAts).map(([name, override]) => [name.toLowerCase(), override]),
@@ -48,6 +50,7 @@ export class SignatureDetector implements AtsDetector {
   public async detect(company: DetectionCompany): Promise<DetectionResult> {
     const override = this.knownAts[company.name.toLowerCase()];
     if (override) {
+      this.report('detect', 'known ATS override matched', { company: company.name });
       return { ...override, detail: 'known-ats override' };
     }
 
@@ -61,6 +64,12 @@ export class SignatureDetector implements AtsDetector {
         await this.robots.assertAllowed(url);
       }
       requestCount += 1;
+      this.report('detect', 'fetching crawl page', {
+        company: company.name,
+        url,
+        request: requestCount,
+        depth: path.length,
+      });
       const result = await this.http.fetchText(url);
       if (!isSuccessful(result)) {
         lastFailure = `fetch failed: HTTP ${result.status}`;
@@ -77,39 +86,59 @@ export class SignatureDetector implements AtsDetector {
       }
       root = page;
     } catch (error: unknown) {
+      this.report(
+        'detect',
+        'careers-page detection failed',
+        { company: company.name, error: errorMessage(error) },
+        'error',
+      );
       return detectionError(error);
     }
 
     const rootMatch = matchSignatures(root.finalUrl, root.body);
     if (rootMatch) {
+      this.report('detect', 'signature matched', { method: rootMatch.method, depth: 0 });
       return matchedResult(rootMatch, 0, root.path);
     }
 
+    this.report('detect', 'no root signature; crawling browse links', {
+      company: company.name,
+    });
     const depthOnePages: CrawledPage[] = [];
     for (const url of findJobBrowseLinks(root.body, root.finalUrl)) {
-      const page = await safelyFetch(fetchPage, url, root.path);
+      const page = await safelyFetch(fetchPage, url, root.path, (error) =>
+        this.report('detect', 'browse candidate failed', { url, error }, 'error'),
+      );
       if (!page) {
         continue;
       }
       depthOnePages.push(page);
       const match = matchSignatures(page.finalUrl, page.body);
       if (match) {
+        this.report('detect', 'signature matched', { method: match.method, depth: 1 });
         return matchedResult(match, 1, page.path);
       }
     }
 
     const detailSource = bestDetailSource(depthOnePages, root);
+    this.report('detect', 'checking job-detail candidates', {
+      source: detailSource.finalUrl,
+    });
     for (const url of findJobDetailLinks(detailSource.body, detailSource.finalUrl)) {
-      const page = await safelyFetch(fetchPage, url, detailSource.path);
+      const page = await safelyFetch(fetchPage, url, detailSource.path, (error) =>
+        this.report('detect', 'detail candidate failed', { url, error }, 'error'),
+      );
       if (!page) {
         continue;
       }
       const match = matchSignatures(page.finalUrl, page.body);
       if (match) {
+        this.report('detect', 'signature matched', { method: match.method, depth: 2 });
         return matchedResult(match, 2, page.path);
       }
     }
 
+    this.report('detect', 'crawl completed without a signature', { requestCount });
     return unknownResult(`no signature found after crawl (${requestCount} requests)`);
   }
 
@@ -119,10 +148,12 @@ async function safelyFetch(
   fetchPage: (url: string, path: readonly string[]) => Promise<CrawledPage | null>,
   url: string,
   path: readonly string[],
+  onError: (error: string) => void,
 ): Promise<CrawledPage | null> {
   try {
     return await fetchPage(url, path);
-  } catch {
+  } catch (error: unknown) {
+    onError(errorMessage(error));
     return null;
   }
 }
@@ -164,4 +195,8 @@ function detectionError(error: unknown): DetectionResult {
 
 function unknownResult(detail: string): DetectionResult {
   return { method: 'unknown', slug: null, detail };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
