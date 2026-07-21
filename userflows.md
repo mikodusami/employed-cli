@@ -1694,9 +1694,10 @@ workspace; do not reuse the workspace or exported variable between flows.
 
 1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
 2. Run `employed init --no-animation`.
-3. Run `node --import tsx --test --test-name-pattern="one company failing|unwritable log" test/run-service.test.ts test/log.test.ts`.
+3. Run `node --import tsx --test --test-name-pattern="one company failing|failed email delivery|unwritable log" test/run-service.test.ts test/log.test.ts`.
 4. Confirm one company failure does not abort the remaining run and an unwritable log target emits
-   one warning without crashing. During a real multi-company `employed run`, the same orchestration
+   one warning without crashing; a contained email failure also preserves the completed run and
+   report. During a real multi-company `employed run`, the same orchestration
    renders `[n/total] Company — stage` and a completion sub-line for each company.
 5. Run `rm -rf "$EMPLOYED_DIR"`.
 6. Run `unset EMPLOYED_DIR`.
