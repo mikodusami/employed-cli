@@ -38,6 +38,29 @@ export const migrations: readonly Migration[] = [
     // manual `dismiss`, which also sets status='dismissed' but leaves this column null.
     up: (database) => database.exec('ALTER TABLE jobs ADD COLUMN filter_reason TEXT;'),
   },
+  {
+    version: 4,
+    up: (database) => {
+      const rows = database
+        .prepare<[], { id: number; scraper_config: string }>(
+          'SELECT id, scraper_config FROM companies WHERE scraper_config IS NOT NULL',
+        )
+        .all();
+      const update = database.prepare<[string, number]>(
+        'UPDATE companies SET scraper_config = ? WHERE id = ?',
+      );
+      for (const row of rows) {
+        const parsed = parseJsonObject(row.scraper_config);
+        if (!parsed || parsed.planVersion === 2 || typeof parsed.strategy !== 'string') {
+          continue;
+        }
+        update.run(
+          JSON.stringify({ ...parsed, mode: 'dom', navigate: [], planVersion: 2 }),
+          row.id,
+        );
+      }
+    },
+  },
 ];
 
 /** Runs every migration newer than the database's current user version. */
@@ -55,5 +78,16 @@ export function migrate(
       migration.up(database);
       database.pragma(`user_version = ${migration.version}`);
     })();
+  }
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
   }
 }
