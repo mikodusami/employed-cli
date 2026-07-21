@@ -137,6 +137,22 @@ behavior. Browser-backed repair requires Chromium:
 npx playwright install chromium
 ```
 
+## A company needs manual review
+
+`manual-review` means every bounded plan attempt failed; it is not a silent dead end. Run doctor,
+then open the newest matching directory:
+
+```bash
+employed doctor
+ls -lt ~/.employed/debug
+```
+
+The bundle contains `captured.html`, `network.txt`, `attempts.json`, and `navigation.json`. Check
+whether the page is authentication/captcha protected (leave it manual), whether `network.txt`
+reveals a same-domain jobs endpoint suitable for an API plan, or whether the company is actually a
+known ATS that should be pinned in `known_ats.yaml`. After correcting the cause, rerun `employed
+company generate "Company Name"`.
+
 ## Playwright/Chromium errors
 
 Install the browser version matching the package:
