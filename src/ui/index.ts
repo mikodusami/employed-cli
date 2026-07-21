@@ -22,9 +22,18 @@ export interface Spinner {
   update(text: string): Spinner;
 }
 
+/** One long-running operation whose visible stage can advance in place. */
+export interface ProgressHandle {
+  step(msg: string): void;
+  substep(msg: string): void;
+  succeed(msg?: string): void;
+  fail(msg?: string): void;
+}
+
 /** Terminal output capabilities available to commands. */
 export interface UI {
   spinner(text: string): Spinner;
+  progress(title: string): ProgressHandle;
   success(message: string): void;
   error(message: string): void;
   warn(message: string): void;
@@ -114,6 +123,11 @@ class AnimatedUI implements UI {
 
   public spinner(text: string): Spinner {
     return new AnimatedSpinner(ora({ text, spinner: 'dots12' }), () => this.ensureBanner());
+  }
+
+  public progress(title: string): ProgressHandle {
+    this.ensureBanner();
+    return new AnimatedProgress(ora({ text: title, spinner: 'dots12' }).start(), title);
   }
 
   public success(message: string): void {
@@ -218,6 +232,10 @@ class PlainUI implements UI {
     return new PlainSpinner(text);
   }
 
+  public progress(title: string): ProgressHandle {
+    return new PlainProgress(title);
+  }
+
   public success(message: string): void {
     console.log(`✓ ${message}`);
   }
@@ -261,7 +279,13 @@ class PlainUI implements UI {
 }
 
 function isHealth(value: string | undefined): value is Health {
-  return value === 'ok' || value === 'degraded' || value === 'broken' || value === 'untested';
+  return (
+    value === 'ok' ||
+    value === 'degraded' ||
+    value === 'broken' ||
+    value === 'manual-review' ||
+    value === 'untested'
+  );
 }
 
 function isBand(value: string | undefined): value is Band {
@@ -272,4 +296,59 @@ function isBand(value: string | undefined): value is Band {
 export function createUI(isAnimationEnabled = true): UI {
   const isAutomatedEnvironment = Boolean(process.env.CI) || !process.stdout.isTTY;
   return isAnimationEnabled && !isAutomatedEnvironment ? new AnimatedUI() : new PlainUI();
+}
+
+class AnimatedProgress implements ProgressHandle {
+  public constructor(
+    private readonly indicator: Ora,
+    private readonly title: string,
+  ) {}
+
+  public step(msg: string): void {
+    this.indicator.text = `${this.title} — ${msg}`;
+  }
+
+  public substep(msg: string): void {
+    this.indicator.stopAndPersist({ symbol: PALETTE.dim('·'), text: PALETTE.dim(msg) });
+    this.indicator.start();
+  }
+
+  public succeed(msg?: string): void {
+    this.indicator.succeed(msg ?? this.title);
+  }
+
+  public fail(msg?: string): void {
+    this.indicator.fail(msg ?? this.title);
+  }
+}
+
+class PlainProgress implements ProgressHandle {
+  public constructor(private readonly title: string) {
+    this.print(title);
+  }
+
+  public step(msg: string): void {
+    this.print(`${this.title} — ${msg}`);
+  }
+
+  public substep(msg: string): void {
+    this.print(`· ${msg}`);
+  }
+
+  public succeed(msg?: string): void {
+    this.print(`✓ ${msg ?? this.title}`);
+  }
+
+  public fail(msg?: string): void {
+    this.print(`✗ ${msg ?? this.title}`, true);
+  }
+
+  private print(message: string, error = false): void {
+    const line = `[${new Date().toISOString()}] ${message}`;
+    if (error) {
+      console.error(line);
+    } else {
+      console.log(line);
+    }
+  }
 }
