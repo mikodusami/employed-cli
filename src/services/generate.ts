@@ -22,6 +22,7 @@ import {
   type AttemptDiagnostic,
 } from '../scrape/diagnostics.js';
 import { ScraperPlanSchema, type ScraperPlan } from '../scrape/plan.js';
+import { NO_STAGE_REPORTER, type StageReporter } from '../scrape/progress.js';
 import { ApiExecutor, type ExecutionReport } from '../scrape/runtime/api.js';
 import { DomExecutor } from '../scrape/runtime/dom.js';
 import { validateExtraction } from '../scrape/validate.js';
@@ -60,6 +61,7 @@ export interface GenerateRuntimeOptions {
   deadlines?: CaptureDeadlines;
   maxAttempts?: number;
   diagnosticsDirectory?: string;
+  report?: StageReporter;
 }
 
 /** Owns the rule that only successfully executed and validated plans are persisted. */
@@ -67,6 +69,7 @@ export class GenerateService {
   private readonly deadlines: CaptureDeadlines;
   private readonly maxAttempts: number;
   private readonly diagnosticsDirectory: string;
+  private readonly report: StageReporter;
 
   public constructor(
     private readonly repositories: Repositories,
@@ -81,6 +84,7 @@ export class GenerateService {
     };
     this.maxAttempts = options.maxAttempts ?? 4;
     this.diagnosticsDirectory = options.diagnosticsDirectory ?? EMPLOYED_DIR;
+    this.report = options.report ?? NO_STAGE_REPORTER;
   }
 
   public async generateFor(
@@ -102,6 +106,11 @@ export class GenerateService {
       const strategy = captureStrategy(attempt, Boolean(this.browsers));
       if (!capture || capture.strategy !== strategy) {
         try {
+          this.report('capture', `capturing careers page (${strategy})`, {
+            company: company.name,
+            attempt,
+            url: company.careers_url,
+          });
           capture = await capturePage(
             strategy,
             company.careers_url,
@@ -109,9 +118,24 @@ export class GenerateService {
             this.browsers,
             this.deadlines,
           );
+          this.report('capture', 'capture completed', {
+            strategy: capture.strategy,
+            finalUrl: capture.finalUrl,
+            networkEntries: capture.networkLog.length,
+          });
           analysis = analyzeCapture(capture);
+          this.report('analyze', 'evidence packet prepared', {
+            linkPatterns: analysis.linkPatterns.length,
+            navigationHops: analysis.navigationPath.length,
+          });
         } catch (error: unknown) {
           finalReasons = [errorMessage(error)];
+          this.report(
+            'capture',
+            'capture failed',
+            { company: company.name, attempt, error: finalReasons[0] },
+            'error',
+          );
           attempts.push({ attempt, plan: null, errors: finalReasons });
           if (strategy === 'static' && this.browsers) {
             attempt = 3;
@@ -126,6 +150,10 @@ export class GenerateService {
         this.browsers &&
         countLikelyJobLinks(capture.html) < MIN_JOB_LINKS
       ) {
+        this.report('capture', 'static page is sparse; escalating to browser network evidence', {
+          company: company.name,
+          attempt,
+        });
         feedback = 'Static HTML was an empty shell; use rendered and network evidence.';
         attempt = 3;
         capture = null;
@@ -140,6 +168,10 @@ export class GenerateService {
 
       let plan: ScraperPlan;
       try {
+        this.report('plan', `asking AI for plan (attempt ${attempt})`, {
+          company: company.name,
+          attempt,
+        });
         plan = await this.ai.runJson({
           templateId: TEMPLATE_ID,
           input: buildPrompt(company, analysis, feedback),
@@ -147,20 +179,45 @@ export class GenerateService {
           schema: ScraperPlanSchema,
           timeoutMs: AI_TIMEOUT_MS,
         });
+        this.report('plan', `received ${plan.mode} plan`, {
+          company: company.name,
+          attempt,
+          confidence: plan.confidence,
+        });
       } catch (error: unknown) {
         if (error instanceof AiUnavailableError) {
           return { status: 'skipped', ok: false, reason: 'AI unavailable.' };
         }
         finalReasons = [errorMessage(error)];
+        this.report(
+          'plan',
+          'AI planning failed',
+          { company: company.name, attempt, error: finalReasons[0] },
+          'error',
+        );
         attempts.push({ attempt, plan: null, errors: finalReasons });
         attempt += 1;
         continue;
       }
 
+      this.report('execute', `executing ${plan.mode} plan`, {
+        company: company.name,
+        attempt,
+      });
       const report = await executePlan(this.http, this.browsers, company, plan, this.deadlines);
+      this.report('execute', 'plan execution completed', {
+        company: company.name,
+        requestCount: report.requestCount,
+        pageCount: report.pageCount,
+        jobs: report.postings.length,
+      });
       const reasons = validateReport(report);
       attempts.push({ attempt, plan, errors: reasons });
       if (reasons.length === 0) {
+        this.report('validate', 'extraction validation passed', {
+          company: company.name,
+          jobs: report.postings.length,
+        });
         persistSuccess(this.repositories, company, plan, report.postings.length);
         return {
           status: 'generated',
@@ -171,6 +228,12 @@ export class GenerateService {
         };
       }
 
+      this.report(
+        'validate',
+        'extraction validation failed',
+        { company: company.name, attempt, reasons },
+        'warn',
+      );
       finalReasons = reasons;
       feedback = JSON.stringify({ priorPlan: plan, validationErrors: reasons }, null, 2);
       attempt += 1;
@@ -182,6 +245,12 @@ export class GenerateService {
       analysis,
       attempts,
       this.diagnosticsDirectory,
+    );
+    this.report(
+      'generate',
+      'attempts exhausted; diagnostics bundle written',
+      { company: company.name, diagnosticsPath },
+      'error',
     );
     this.repositories.companies.updateHealth(company.id, 'manual-review');
     return {
