@@ -33,6 +33,21 @@ run:
 - `heal.maxPerCompany` and `heal.maxPerRun` bound automated repair cost in one run.
 - `playwright.navTimeoutMs` is the hard rendered-page navigation/selector timeout.
 
+### Generated scraper safety
+
+```yaml
+capture:
+  staticDeadlineMs: 45000
+  playwrightDeadlineMs: 90000
+generate:
+  maxAttempts: 4
+```
+
+The capture deadlines are absolute wall-clock limits for one static or browser evidence capture.
+`generate.maxAttempts` bounds the capture/analyze/plan/execute/validate state machine for one
+company. Increasing these values can help unusually slow sites, but every attempt may consume an AI
+call. Exhaustion changes company health to `manual-review` and writes evidence under `debug/`.
+
 ### AI providers
 
 ```yaml
