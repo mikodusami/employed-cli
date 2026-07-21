@@ -17,17 +17,22 @@ export interface ScrapeRuntimeDependencies {
   ai: AiRunner | null;
   config: AppConfig;
   keywords: KeywordsFile;
+  /** Undefined builds the normal pool; null explicitly disables browser work for constrained runs. */
+  browsers?: BrowserPool | null;
 }
 
 /** Owns capabilities whose lifetime must match one command or scheduled run. */
 export class ScrapeRuntime {
-  public readonly browsers: BrowserPool;
+  public readonly browsers: BrowserPool | undefined;
   public readonly generator: GenerateService;
   public readonly scraper: ScrapeService;
   public readonly companies: CompanyService;
 
   public constructor(dependencies: ScrapeRuntimeDependencies) {
-    this.browsers = new BrowserPool(dependencies.config.run.playwright.navTimeoutMs);
+    this.browsers =
+      dependencies.browsers === undefined
+        ? new BrowserPool(dependencies.config.run.playwright.navTimeoutMs)
+        : (dependencies.browsers ?? undefined);
     this.generator = new GenerateService(
       dependencies.repositories,
       dependencies.http,
@@ -62,6 +67,6 @@ export class ScrapeRuntime {
   }
 
   public close(): Promise<void> {
-    return this.browsers.close();
+    return this.browsers?.close() ?? Promise.resolve();
   }
 }
