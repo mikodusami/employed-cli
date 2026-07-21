@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 
 import { describeAutoFiltered } from '../services/scrape.js';
 import { ScrapeRuntime } from '../services/scrape-runtime.js';
+import { bindProgress } from './progress.js';
 import type { CommandContext } from './types.js';
 
 interface ScanOptions {
@@ -25,7 +26,7 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
     return;
   }
 
-  const spinner = context.ui.spinner(`Fetching jobs for ${company.name}`).start();
+  const progress = bindProgress(context, `Scanning ${company.name}`);
   const runtime = new ScrapeRuntime({
     repositories: context.repos,
     http: context.http,
@@ -33,15 +34,16 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
     ai: context.ai,
     config: context.config.loadApp(),
     keywords: context.config.loadKeywords(),
+    report: context.stages.report,
   });
   try {
     const result = await runtime.scraper.scrapeCompany(company);
     if (result.status === 'skipped') {
-      spinner.fail(`${company.name} skipped: ${result.reason}`);
+      progress.handle.fail(`${company.name} skipped: ${result.reason}`);
       return;
     }
     if (result.status === 'failed') {
-      spinner.fail(`${company.name} (${result.method}) failed: ${result.reason}`);
+      progress.handle.fail(`${company.name} (${result.method}) failed: ${result.reason}`);
       if (result.heal) {
         context.ui.warn(result.heal.note);
       }
@@ -50,7 +52,7 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
 
     const autoFilteredNote =
       result.autoFiltered > 0 ? `, ${describeAutoFiltered(result)} auto-filtered` : '';
-    spinner.succeed(
+    progress.handle.succeed(
       `${company.name} (${result.method}): ${result.seen} seen, ${result.new} new` +
         autoFilteredNote,
     );
@@ -72,7 +74,11 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
         ]),
       );
     }
+  } catch (error: unknown) {
+    progress.handle.fail(`${company.name} scan failed`);
+    throw error;
   } finally {
+    progress.release();
     await runtime.close();
   }
 }
