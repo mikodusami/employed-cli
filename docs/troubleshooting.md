@@ -89,7 +89,8 @@ employed doctor
 
 Check host, port, sender, recipient, user, network access, and whether the provider requires an app
 password. Port 465 uses secure SMTP. Email failure never deletes the report; open the path printed by
-the run under `~/.employed/reports`.
+the run under `~/.employed/reports`. The contained SMTP error is also recorded at error level under
+the `run:email` scope in that command's full JSONL log.
 
 ## Gmail MCP is not found
 
