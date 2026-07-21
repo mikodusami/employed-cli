@@ -255,7 +255,23 @@ employed export --out employed-backup.json
 ```bash
 employed doctor --no-animation
 employed doctor --strict --no-animation
+employed run --trace --no-animation
 ```
 
-Use `--no-animation` for bug reports and logs. `--verbose` can add HTTP cache diagnostics when
-investigating fetch behavior.
+Use `--no-animation` for sequential timestamped stages suitable for bug reports. `--verbose` shows
+debug diagnostics; `--trace` additionally shows milliseconds elapsed since the preceding stage.
+If a command appears stuck, the last visible trace line identifies the active operation until its
+hard deadline fires.
+
+Every command prints `full log: ...` before exit. That file is JSONL, including debug data and
+handled errors that may not appear in normal terminal output:
+
+```bash
+tail -n 50 ~/.employed/logs/run-*.log
+grep '"level":"error"' ~/.employed/logs/run-*.log
+grep '"scope":"capture"' ~/.employed/logs/company-generate-*.log
+```
+
+If the log directory cannot be written, employed emits one warning and continues with terminal
+output; fix workspace ownership/permissions before the next run. Old `.log` files are removed at
+startup according to `logging.retentionDays`.
