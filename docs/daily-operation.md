@@ -118,9 +118,24 @@ Strict mode exits nonzero when a red problem exists.
 
 ## Logs and unattended behavior
 
-- Plain output is selected automatically for non-TTY output and CI.
-- `--no-animation` explicitly disables the wordmark, color, and animation.
-- `--verbose` prints HTTP cache-hit diagnostics.
+Every command writes a crash-safe JSONL event stream to
+`$EMPLOYED_DIR/logs/<command>-<YYYY-MM-DD-HHmmss>.log` (or `~/.employed/logs/` by default) and
+prints its exact path before exiting. Each line has `ts`, `level`, `scope`, `msg`, and optional
+structured `data`. All debug events go to the file even when they are hidden from the terminal.
+
+```bash
+employed run --verbose       # include debug events in terminal output
+employed run --quiet         # terminal shows warnings/errors plus the final log path
+employed run --trace         # debug output and elapsed ms between pipeline stages
+grep '"scope":"scrape:Meta"' ~/.employed/logs/run-*.log
+```
+
+Long detection, capture, generation, and scrape operations update one live progress line as their
+stage changes. Multi-company operations include `[current/total] Company` and persist one summary
+per completed company. Plain output is selected automatically for non-TTY/CI runs; each stage is a
+timestamped line with no control characters. `--no-animation` selects the same form explicitly.
+
+- Log retention is configured with `logging.retentionDays` (default 14).
 - Gmail sync, AI unavailability, email failure, healing failure, and individual company failures all
   degrade without losing the local report.
 - Use `employed export --out backup.json` periodically to back up the SQLite-owned state.
