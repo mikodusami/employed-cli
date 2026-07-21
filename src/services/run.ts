@@ -7,6 +7,7 @@ import { EmailFetcher } from '../gmail/fetch.js';
 import { buildDailyReport } from '../report/build.js';
 import type { AutoAppliedUpdate, RunStats } from '../report/model.js';
 import { writeReport } from '../report/writer.js';
+import type { BrowserPool } from '../scrape/browser.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { HttpClient } from '../util/http.js';
 import { ApplicationService } from './application.js';
@@ -75,6 +76,7 @@ export interface RunServiceDependencies {
   /** Overrides SMTP delivery; tests use an in-memory transport. */
   emailService?: DigestSender;
   onProgress?: (current: number, total: number, company: string) => void;
+  browsers?: BrowserPool | null;
 }
 
 /** Mutable counters threaded through the per-company loop. */
@@ -110,6 +112,7 @@ export class RunService {
       ai: this.dependencies.ai,
       config: this.dependencies.config,
       keywords: this.dependencies.keywords,
+      browsers: this.dependencies.browsers,
     });
 
     const accumulator: RunAccumulator = {
