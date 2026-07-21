@@ -6,6 +6,7 @@ import type { AiRunner } from '../ai/index.js';
 import type { ConfigService } from '../config/index.js';
 import type { Repositories } from '../db/index.js';
 import type { AtsDetector } from '../scrape/detect.js';
+import type { StageBus } from '../scrape/progress.js';
 import type { UI } from '../ui/index.js';
 import type { HttpClient } from '../util/http.js';
 import type { Logger } from '../util/log.js';
@@ -20,6 +21,7 @@ export interface CommandContext {
   http: HttpClient;
   ai: AiRunner | null;
   log: Logger;
+  stages: StageBus;
 }
 
 /** Registers one command and its options on the root program. */
