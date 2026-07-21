@@ -18,6 +18,7 @@ import { register as registerMove } from './commands/move.js';
 import { register as registerNew } from './commands/new.js';
 import { register as registerNote } from './commands/note.js';
 import { register as registerRescore } from './commands/rescore.js';
+import { register as registerRestore } from './commands/restore.js';
 import { register as registerRun } from './commands/run.js';
 import { register as registerScan } from './commands/scan.js';
 import { register as registerSchedule } from './commands/schedule.js';
@@ -100,6 +101,7 @@ async function run(): Promise<void> {
   registerImport(program, context);
   registerScan(program, context);
   registerRescore(program, context);
+  registerRestore(program, context);
   registerNew(program, context);
   registerRun(program, context);
   registerSchedule(program, context);

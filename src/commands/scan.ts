@@ -1,6 +1,7 @@
 /** Registers single-company job scanning orchestration. */
 import type { Command } from 'commander';
 
+import { describeAutoFiltered } from '../services/scrape.js';
 import { ScrapeRuntime } from '../services/scrape-runtime.js';
 import type { CommandContext } from './types.js';
 
@@ -47,8 +48,11 @@ async function scanCompany(context: CommandContext, companyName: string): Promis
       return;
     }
 
+    const autoFilteredNote =
+      result.autoFiltered > 0 ? `, ${describeAutoFiltered(result)} auto-filtered` : '';
     spinner.succeed(
-      `${company.name} (${result.method}): ${result.seen} seen, ${result.new} new`,
+      `${company.name} (${result.method}): ${result.seen} seen, ${result.new} new` +
+        autoFilteredNote,
     );
     if (result.heal) {
       context.ui.info(result.heal.note);

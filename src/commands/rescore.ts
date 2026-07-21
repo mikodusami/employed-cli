@@ -16,7 +16,10 @@ function rescore(context: CommandContext): void {
   try {
     const service = new RescoreService(context.repos, context.config.loadKeywords());
     const result = service.rescoreOpen();
-    spinner.succeed(`Re-scored ${result.updated} open jobs`);
+    spinner.succeed(
+      `Re-scored ${result.updated} open jobs — ${result.bandUp} moved up, ` +
+        `${result.bandDown} moved down`,
+    );
   } catch (error: unknown) {
     spinner.fail('Could not re-score open jobs');
     throw error;

@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import type { Tier } from '../db/index.js';
 import { RUN_LOCK_PATH } from '../constants.js';
 import { RunService, type RunSummary } from '../services/run.js';
+import { describeAutoFiltered } from '../services/scrape.js';
 import { acquireRunLock, LockHeldError, type RunLock } from '../util/lock.js';
 import { ValidationError } from '../util/errors.js';
 import type { CommandContext } from './types.js';
@@ -84,6 +85,7 @@ function renderSummary(context: CommandContext, summary: RunSummary): void {
       ['Jobs seen', String(summary.jobsSeen)],
       ['Jobs new', String(summary.jobsNew)],
       ['Jobs closed', String(summary.jobsClosed)],
+      ['Auto-filtered', describeAutoFiltered(summary)],
       ['Scrapers healed', String(summary.healed)],
       ['Scrapers broken', String(summary.broken)],
       ['AI calls', String(summary.aiCalls)],
