@@ -33,6 +33,10 @@ export class ScrapeRuntime {
       dependencies.http,
       dependencies.ai,
       this.browsers,
+      {
+        deadlines: dependencies.config.capture,
+        maxAttempts: dependencies.config.generate.maxAttempts,
+      },
     );
     const options: ScrapeServiceOptions = {
       browsers: this.browsers,
