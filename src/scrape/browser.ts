@@ -1,6 +1,8 @@
 /** Shared, lazy Playwright browser lifecycle for one employed process. */
 import { chromium, type Browser, type Page } from 'playwright';
 
+import { CaptureTimeoutError } from '../util/errors.js';
+
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'font', 'media']);
 
 export type BrowserLauncher = () => Promise<Browser>;
@@ -14,7 +16,10 @@ export class BrowserPool {
     private readonly launch: BrowserLauncher = () => chromium.launch(),
   ) {}
 
-  public async page<Result>(operation: (page: Page) => Promise<Result>): Promise<Result> {
+  public async page<Result>(
+    operation: (page: Page) => Promise<Result>,
+    deadlineMs = this.navTimeoutMs,
+  ): Promise<Result> {
     const browser = await this.getBrowser();
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(this.navTimeoutMs);
@@ -27,9 +32,9 @@ export class BrowserPool {
       await route.continue();
     });
     try {
-      return await operation(page);
+      return await withPageDeadline(operation(page), page, deadlineMs);
     } finally {
-      await page.close();
+      await page.close().catch(() => undefined);
     }
   }
 
@@ -50,5 +55,26 @@ export class BrowserPool {
       });
     }
     return this.browserPromise;
+  }
+}
+
+async function withPageDeadline<Result>(
+  operation: Promise<Result>,
+  page: Page,
+  deadlineMs: number,
+): Promise<Result> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      void page.close().catch(() => undefined);
+      reject(new CaptureTimeoutError(`Browser operation exceeded ${deadlineMs}ms deadline.`));
+    }, deadlineMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
