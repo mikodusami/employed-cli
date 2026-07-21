@@ -178,6 +178,12 @@ export class RunService {
           email.sent = true;
         } catch (error: unknown) {
           email.error = error instanceof Error ? error.message : String(error);
+          (this.dependencies.report ?? NO_STAGE_REPORTER)(
+            'run:email',
+            'email delivery failed and was contained',
+            { error: email.error },
+            'error',
+          );
         }
       }
     } finally {
