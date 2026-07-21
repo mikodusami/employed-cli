@@ -123,7 +123,9 @@ line. Logs land in `~/.employed/logs`; remove the schedule with `employed schedu
 - `employed schedule install/status/remove` — manage the daily OS schedule.
 - `employed doctor [--strict]` — diagnose every integration and recorded health signal.
 
-Global flags: `--no-animation` selects log-safe plain output; `--verbose` shows HTTP cache details.
+Global flags: `--no-animation` selects timestamped plain progress, `--verbose` shows debug events,
+`--quiet` limits terminal noise to warnings/errors, and `--trace` adds elapsed stage timings. Every
+command writes a complete JSONL event stream and prints its path before exit.
 
 ## Configuration
 
