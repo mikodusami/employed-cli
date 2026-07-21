@@ -15,11 +15,12 @@ export type ScrapeMethod =
   | 'recruitee'
   | 'generated-static'
   | 'generated-playwright'
+  | 'generated-api'
   | 'unknown'
   | 'manual';
 
 /** Current health of a company's scraper. */
-export type Health = 'ok' | 'degraded' | 'broken' | 'untested';
+export type Health = 'ok' | 'degraded' | 'broken' | 'manual-review' | 'untested';
 
 /** Lifecycle state for a discovered job. */
 export type JobStatus = 'open' | 'closed' | 'dismissed';
