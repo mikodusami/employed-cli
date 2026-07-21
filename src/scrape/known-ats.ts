@@ -10,6 +10,7 @@ export const ScrapeMethodSchema = z.enum([
   'recruitee',
   'generated-static',
   'generated-playwright',
+  'generated-api',
   'unknown',
   'manual',
 ]);
