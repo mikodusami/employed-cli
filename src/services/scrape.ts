@@ -6,6 +6,7 @@ import { applyHardFilters } from '../score/filter.js';
 import { getSource } from '../scrape/adapters/index.js';
 import type { BrowserPool } from '../scrape/browser.js';
 import { toJobInput } from '../scrape/normalize.js';
+import { NO_STAGE_REPORTER, type StageReporter } from '../scrape/progress.js';
 import type { RawPosting } from '../scrape/types.js';
 import type { HttpClient } from '../util/http.js';
 import type { HealBudget, HealResult, HealService } from './heal.js';
@@ -36,6 +37,7 @@ export interface SmokeResult {
 export interface ScrapeServiceOptions {
   browsers?: BrowserPool;
   keywords?: KeywordsFile;
+  report?: StageReporter;
   healing?: {
     service: HealService;
     budget: HealBudget;
@@ -60,11 +62,23 @@ export class ScrapeService {
     allowHeal: boolean,
     priorHeal: HealResult | null,
   ): Promise<CompanyScrapeResult> {
+    const report = this.options.report ?? NO_STAGE_REPORTER;
+    const started = Date.now();
+    report(`scrape:${company.name}`, 'company scrape started', {
+      company: company.name,
+      method: company.scrape_method,
+    });
     const source = getSource(company.scrape_method, {
       http: this.http,
       browsers: this.options.browsers,
     });
     if (!source) {
+      report(
+        `scrape:${company.name}`,
+        'no scraper source is registered',
+        { method: company.scrape_method },
+        'warn',
+      );
       return result(
         'skipped',
         company.scrape_method,
@@ -74,7 +88,9 @@ export class ScrapeService {
     }
 
     try {
+      report(`scrape:${company.name}`, 'fetching postings', { method: source.method });
       const postings = await source.fetchPostings(company);
+      report(`scrape:${company.name}`, 'postings fetched', { count: postings.length });
       if (postings.length === 0 && isHealEligible(company)) {
         return this.handleFailure(
           company,
@@ -122,6 +138,12 @@ export class ScrapeService {
         this.repositories.companies.recordSuccess(company.id, postings.length, today);
         return insertedJobs;
       });
+      report(`scrape:${company.name}`, 'company scrape finished', {
+        seen: postings.length,
+        new: newJobs.length,
+        autoFiltered: autoFilteredByKeyword + autoFilteredByLocation,
+        durationMs: Date.now() - started,
+      });
       return {
         status: 'completed',
         method: source.method,
@@ -136,6 +158,12 @@ export class ScrapeService {
       };
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
+      report(
+        `scrape:${company.name}`,
+        'company scrape failed',
+        { error: reason, durationMs: Date.now() - started },
+        'error',
+      );
       return this.handleFailure(company, source.method, reason, allowHeal);
     }
   }
@@ -156,7 +184,16 @@ export class ScrapeService {
     }
 
     try {
+      (this.options.report ?? NO_STAGE_REPORTER)(`scrape:${company.name}`, 'healing triggered', {
+        method,
+        reason,
+      });
       const heal = await healing.service.heal(company, healing.budget);
+      (this.options.report ?? NO_STAGE_REPORTER)(`scrape:${company.name}`, 'healing completed', {
+        healed: heal.healed,
+        deferred: heal.deferred,
+        note: heal.note,
+      });
       if (heal.healed) {
         const repaired = this.repositories.companies.findByName(company.name);
         if (repaired) {
@@ -166,6 +203,12 @@ export class ScrapeService {
       return result('failed', method, `${reason} ${heal.note}`, heal);
     } catch (error: unknown) {
       const healReason = error instanceof Error ? error.message : String(error);
+      (this.options.report ?? NO_STAGE_REPORTER)(
+        `scrape:${company.name}`,
+        'healing failed',
+        { error: healReason },
+        'error',
+      );
       this.repositories.companies.updateHealth(company.id, 'broken');
       return result('failed', method, `${reason} Heal failed: ${healReason}`, null);
     }
