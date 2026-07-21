@@ -9,6 +9,7 @@ import type { AutoAppliedUpdate, RunStats } from '../report/model.js';
 import { writeReport } from '../report/writer.js';
 import type { BrowserPool } from '../scrape/browser.js';
 import type { AtsDetector } from '../scrape/detect.js';
+import { NO_STAGE_REPORTER, type StageReporter } from '../scrape/progress.js';
 import type { HttpClient } from '../util/http.js';
 import { ApplicationService } from './application.js';
 import { EmailService } from './email.js';
@@ -76,7 +77,9 @@ export interface RunServiceDependencies {
   /** Overrides SMTP delivery; tests use an in-memory transport. */
   emailService?: DigestSender;
   onProgress?: (current: number, total: number, company: string) => void;
+  onCompanyComplete?: (summary: string, failed: boolean) => void;
   browsers?: BrowserPool | null;
+  report?: StageReporter;
 }
 
 /** Mutable counters threaded through the per-company loop. */
@@ -113,6 +116,7 @@ export class RunService {
       config: this.dependencies.config,
       keywords: this.dependencies.keywords,
       browsers: this.dependencies.browsers,
+      report: this.dependencies.report,
     });
 
     const accumulator: RunAccumulator = {
@@ -221,6 +225,8 @@ export class RunService {
     company: CompanyRow,
     accumulator: RunAccumulator,
   ): Promise<void> {
+    const started = Date.now();
+    const report = this.dependencies.report ?? NO_STAGE_REPORTER;
     accumulator.companiesScanned += 1;
     const previousSuccessAt = company.last_success;
     try {
@@ -247,9 +253,27 @@ export class RunService {
       if (result.heal?.healed) {
         accumulator.healed += 1;
       }
+      const failed = result.status === 'failed';
+      const summary = failed
+        ? `✗ ${company.name}: ${result.reason ?? 'unknown failure'}`
+        : `✓ ${company.name}: ${result.seen} jobs (${result.new} new)`;
+      this.dependencies.onCompanyComplete?.(summary, failed);
+      report(`run:${company.name}`, 'company completed', {
+        status: result.status,
+        seen: result.seen,
+        new: result.new,
+        durationMs: Date.now() - started,
+      });
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
       accumulator.failures.push({ company: company.name, method: company.scrape_method, reason });
+      this.dependencies.onCompanyComplete?.(`✗ ${company.name}: ${reason}`, true);
+      report(
+        `run:${company.name}`,
+        'unhandled company failure contained',
+        { error: reason, durationMs: Date.now() - started },
+        'error',
+      );
     }
   }
 
@@ -278,7 +302,13 @@ export class RunService {
         );
       const result = await sync.run('cron', { days: GMAIL_SYNC_DAYS });
       return result.autoApplied;
-    } catch {
+    } catch (error: unknown) {
+      (this.dependencies.report ?? NO_STAGE_REPORTER)(
+        'run:gmail',
+        'Gmail sync failed and was contained',
+        { error: error instanceof Error ? error.message : String(error) },
+        'error',
+      );
       return [];
     }
   }
@@ -311,5 +341,7 @@ function filterByTiers(
 }
 
 function countBroken(repositories: Repositories): number {
-  return repositories.companies.list().filter((company) => company.health === 'broken').length;
+  return repositories.companies
+    .list()
+    .filter((company) => company.health === 'broken' || company.health === 'manual-review').length;
 }
