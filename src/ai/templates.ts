@@ -15,14 +15,17 @@ export function renderTemplate(
     throw new ValidationError(`Invalid prompt template ID: ${templateId}`);
   }
   let rendered = readFileSync(new URL(`${templateId}.txt`, PROMPTS_DIRECTORY), 'utf8');
+  const required = [...rendered.matchAll(UNRESOLVED_PLACEHOLDER)].flatMap((match) =>
+    match[1] ? [match[1]] : [],
+  );
+  const missing = [...new Set(required)].filter((name) => values[name] === undefined);
+  if (missing.length > 0) {
+    throw new ValidationError(
+      `Prompt ${templateId} has unresolved placeholders: ${missing.join(', ')}`,
+    );
+  }
   for (const [name, value] of Object.entries(values)) {
     rendered = rendered.replaceAll(`{${name}}`, value);
-  }
-  const unresolved = [...rendered.matchAll(UNRESOLVED_PLACEHOLDER)].map((match) => match[1]);
-  if (unresolved.length > 0) {
-    throw new ValidationError(
-      `Prompt ${templateId} has unresolved placeholders: ${[...new Set(unresolved)].join(', ')}`,
-    );
   }
   return rendered;
 }
