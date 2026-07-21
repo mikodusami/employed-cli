@@ -45,7 +45,7 @@ The default workspace is `~/.employed`:
 ├── keywords.yaml     scoring profile
 ├── employed.db       SQLite source of truth
 ├── reports/          dated Markdown reports
-└── logs/             scheduled-run output
+└── logs/             per-command structured JSONL event streams
 ```
 
 Set `EMPLOYED_DIR` before running a command to use another workspace. This is especially useful for
