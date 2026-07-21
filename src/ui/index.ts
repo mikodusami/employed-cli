@@ -41,6 +41,7 @@ export function styleHealth(health: Health): string {
     ok: PALETTE.green,
     degraded: PALETTE.yellow,
     broken: PALETTE.red,
+    'manual-review': PALETTE.red,
     untested: PALETTE.dim,
   };
   return styles[health](health);
