@@ -49,3 +49,28 @@ test('plain progress prints every stage as timestamped sequential output', () =>
   assert.match(lines[3] ?? '', /✓ 2 jobs extracted$/);
   assert.equal(lines.join('\n').includes('\u001B'), false);
 });
+
+test('quiet UI suppresses progress and info while preserving warnings and errors', () => {
+  const standard: string[] = [];
+  const errors: string[] = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.log = (message?: unknown) => standard.push(String(message));
+  console.warn = (message?: unknown) => errors.push(String(message));
+  console.error = (message?: unknown) => errors.push(String(message));
+  try {
+    const ui = createUI(false, true);
+    ui.info('hidden');
+    ui.progress('hidden').step('also hidden');
+    ui.warn('visible warning');
+    ui.error('visible error');
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  }
+
+  assert.deepEqual(standard, []);
+  assert.deepEqual(errors, ['! visible warning', '✗ visible error']);
+});
