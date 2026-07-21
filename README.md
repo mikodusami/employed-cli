@@ -142,7 +142,7 @@ Set `EMPLOYED_DIR` to point all state at another directory, which is useful for 
 OS scheduler / CLI
         |
         v
-RunService -> tier scheduler -> ATS adapters or generated scraper configs
+RunService -> tier scheduler -> ATS adapters or generated scraper plans
         |                            |
         |                            +-> bounded Playwright rendering when required
         |                            +-> detect -> degrade -> regenerate -> validate -> retry
@@ -155,10 +155,11 @@ SQLite -> pure scoring engine -> DailyReport model -> terminal / Markdown / SMTP
 Claude Code or Codex CLI -> scraper generation, healing, and Gmail MCP delegation
 ```
 
-Known ATS APIs take the cheapest deterministic path. Unknown boards are distilled into bounded
-public DOM input, converted by the configured AI provider into data-only scraper configurations,
-then executed and validated before persistence. A shared run-scoped browser handles render-only
-boards. Repeated failures trigger bounded self-healing; one broken company never aborts the fleet.
+Known ATS APIs take the cheapest deterministic path. Unknown boards move through deadline-bound
+static, rendered, and JSON-network evidence capture. The configured AI provider emits only a
+versioned declarative DOM or API plan; hardened runtimes execute and validate it before persistence.
+A shared run-scoped browser handles render-only boards. Exhausted attempts leave a manual-review
+diagnostics bundle, and one failing company never aborts the fleet.
 
 AI features depend on a provider-neutral runner with preference fallback, a per-run call budget, and
 provider-scoped caching. Reports and analytics use serializable models with pure renderers, while
