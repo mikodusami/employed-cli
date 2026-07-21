@@ -8,9 +8,11 @@ import { AdapterError, RequiresRenderError } from '../util/errors.js';
 import type { HttpClient } from '../util/http.js';
 import { BrowserPool } from './browser.js';
 import { ScraperConfigSchema, type ScraperConfig } from './config.js';
+import { DomPlanSchema, ScraperPlanSchema, type DomPlan } from './plan.js';
 import type { RawPosting, ScrapeSource } from './types.js';
 
 type FieldConfig = ScraperConfig['fields']['title'];
+type DomRuntimeConfig = ScraperConfig & { navigate: DomPlan['navigate'] };
 
 /** Executes all company-specific selector behavior as configuration data. */
 export class GeneratedSource implements ScrapeSource {
@@ -18,11 +20,11 @@ export class GeneratedSource implements ScrapeSource {
 
   public constructor(
     private readonly http: HttpClient,
-    private readonly suppliedConfig?: ScraperConfig,
+    private readonly suppliedConfig?: ScraperConfig | DomPlan,
   ) {}
 
   public async fetchPostings(company: CompanyRow): Promise<RawPosting[]> {
-    const config = this.suppliedConfig ?? parseStoredConfig(company);
+    const config = normalizeConfig(this.suppliedConfig ?? parseStoredConfig(company));
     requireStaticStrategy(config);
 
     const postings: RawPosting[] = [];
@@ -55,34 +57,57 @@ export class PlaywrightGeneratedSource implements ScrapeSource {
 
   public constructor(
     private readonly browsers: BrowserPool,
-    private readonly suppliedConfig?: ScraperConfig,
+    private readonly suppliedConfig?: ScraperConfig | DomPlan,
   ) {}
 
   public async fetchPostings(company: CompanyRow): Promise<RawPosting[]> {
-    const config = this.suppliedConfig ?? parseStoredConfig(company);
+    const config = normalizeConfig(this.suppliedConfig ?? parseStoredConfig(company));
     return this.browsers.page(async (page) => {
+      await navigate(page, company.careers_url);
+      await applyNavigateSteps(page, config.navigate);
       if (
         config.pagination.type === 'load-more-button' ||
         config.pagination.type === 'infinite-scroll'
       ) {
-        return acquireExpandingPage(page, company.careers_url, config);
+        return acquireExpandingPage(page, config);
       }
-      return acquireNavigatedPages(page, company.careers_url, config);
+      return acquireNavigatedPages(page, config);
     });
   }
 }
 
-function parseStoredConfig(company: CompanyRow): ScraperConfig {
+function parseStoredConfig(company: CompanyRow): DomPlan {
   if (!company.scraper_config) {
     throw new AdapterError(`Company ${company.name} has no generated scraper configuration.`);
   }
   try {
-    return ScraperConfigSchema.parse(JSON.parse(company.scraper_config));
+    const plan = ScraperPlanSchema.parse(JSON.parse(company.scraper_config));
+    if (plan.mode !== 'dom') {
+      throw new AdapterError(`Company ${company.name} stores an API plan, not a DOM plan.`);
+    }
+    return plan;
   } catch (error: unknown) {
     throw new AdapterError(`Company ${company.name} has an invalid scraper configuration.`, {
       cause: error,
     });
   }
+}
+
+function normalizeConfig(config: ScraperConfig | DomPlan): DomRuntimeConfig {
+  if ('mode' in config) {
+    const plan = DomPlanSchema.parse(config);
+    return {
+      strategy: plan.strategy,
+      listSelector: plan.listSelector,
+      fields: plan.fields,
+      pagination: plan.pagination,
+      urlPrefix: plan.urlPrefix,
+      confidence: plan.confidence,
+      notes: plan.notes,
+      navigate: plan.navigate,
+    };
+  }
+  return { ...ScraperConfigSchema.parse(config), navigate: [] };
 }
 
 function requireStaticStrategy(config: ScraperConfig): void {
@@ -97,13 +122,14 @@ function requireStaticStrategy(config: ScraperConfig): void {
 
 async function acquireNavigatedPages(
   page: Page,
-  initialUrl: string,
-  config: ScraperConfig,
+  config: DomRuntimeConfig,
 ): Promise<RawPosting[]> {
   const postings: RawPosting[] = [];
-  let pageUrl = initialUrl;
+  let pageUrl = page.url();
   for (let pageNumber = 1; pageNumber <= config.pagination.maxPages; pageNumber += 1) {
-    await navigate(page, pageUrl);
+    if (pageNumber > 1) {
+      await navigate(page, pageUrl);
+    }
     if (pageNumber === 1) {
       await page.waitForSelector(config.listSelector);
     } else if ((await page.locator(config.listSelector).count()) === 0) {
@@ -125,10 +151,8 @@ async function acquireNavigatedPages(
 
 async function acquireExpandingPage(
   page: Page,
-  initialUrl: string,
-  config: ScraperConfig,
+  config: DomRuntimeConfig,
 ): Promise<RawPosting[]> {
-  await navigate(page, initialUrl);
   await page.waitForSelector(config.listSelector);
   if (config.pagination.type === 'load-more-button') {
     const selector = config.pagination.value;
@@ -159,13 +183,51 @@ async function acquireExpandingPage(
   return extractPostings(load(await page.content()), config, page.url());
 }
 
+async function applyNavigateSteps(page: Page, steps: DomPlan['navigate']): Promise<void> {
+  for (const [index, step] of steps.entries()) {
+    try {
+      switch (step.action) {
+        case 'goto':
+          if (!step.target) {
+            throw new AdapterError('goto navigation requires a URL target.');
+          }
+          await navigate(page, new URL(step.target, page.url()).toString());
+          break;
+        case 'click':
+          if (!step.target) {
+            throw new AdapterError('click navigation requires a selector target.');
+          }
+          await page.locator(step.target).first().click();
+          await page.waitForLoadState('networkidle');
+          break;
+        case 'waitFor':
+          if (!step.target) {
+            throw new AdapterError('waitFor navigation requires a selector target.');
+          }
+          await page.waitForSelector(step.target);
+          break;
+        case 'scroll':
+          await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+          await page.waitForTimeout(250);
+          break;
+      }
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new AdapterError(
+        `Navigation step ${index + 1} (${step.action}) failed: ${reason}`,
+        { cause: error },
+      );
+    }
+  }
+}
+
 async function navigate(page: Page, url: string): Promise<void> {
   await page.goto(url, { waitUntil: 'networkidle' });
 }
 
 async function browserNextPageUrl(
   page: Page,
-  config: ScraperConfig,
+  config: DomRuntimeConfig,
   nextPage: number,
 ): Promise<string | null> {
   switch (config.pagination.type) {
@@ -199,7 +261,7 @@ async function documentHeight(page: Page): Promise<number> {
 
 function extractPostings(
   $: CheerioAPI,
-  config: ScraperConfig,
+  config: DomRuntimeConfig,
   pageUrl: string,
 ): RawPosting[] {
   const postings: RawPosting[] = [];
@@ -243,7 +305,7 @@ function resolvePostingUrl(value: string, baseUrl: string): string {
 
 function nextPageUrl(
   $: CheerioAPI,
-  config: ScraperConfig,
+  config: DomRuntimeConfig,
   currentUrl: string,
   nextPage: number,
 ): string | null {
