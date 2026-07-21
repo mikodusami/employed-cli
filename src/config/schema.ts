@@ -128,6 +128,17 @@ export const AppConfigSchema = z.object({
     }),
   email: EmailConfigSchema,
   ai: AiConfigSchema,
+  capture: z
+    .object({
+      staticDeadlineMs: z.number().int().positive().default(45_000),
+      playwrightDeadlineMs: z.number().int().positive().default(90_000),
+    })
+    .default({ staticDeadlineMs: 45_000, playwrightDeadlineMs: 90_000 }),
+  generate: z
+    .object({
+      maxAttempts: z.number().int().min(1).max(8).default(4),
+    })
+    .default({ maxAttempts: 4 }),
   stats: z
     .object({
       /** Applications quiet at least this many days (and not offer/rejected) get a nudge. */
