@@ -34,6 +34,10 @@ capture:
 generate:
   maxAttempts: 4
 
+# Remove command logs older than this many days when a logger starts.
+logging:
+  retentionDays: 14
+
 email:
   # Send the daily report after an employed run.
   enabled: false
