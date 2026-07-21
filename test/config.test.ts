@@ -39,6 +39,8 @@ test('schemas populate every top-level configuration section from an empty mappi
       },
       maxCallsPerRun: 10,
     },
+    capture: { staticDeadlineMs: 45_000, playwrightDeadlineMs: 90_000 },
+    generate: { maxAttempts: 4 },
     stats: {
       followUpDays: 7,
       staleDays: 21,
