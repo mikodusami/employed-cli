@@ -25,6 +25,15 @@ run:
   playwright:
     navTimeoutMs: 30000
 
+# Absolute deadlines for careers-page evidence capture.
+capture:
+  staticDeadlineMs: 45000
+  playwrightDeadlineMs: 90000
+
+# AI planning attempts allowed for one company before manual review.
+generate:
+  maxAttempts: 4
+
 email:
   # Send the daily report after an employed run.
   enabled: false
