@@ -168,13 +168,31 @@ Scheduled environments may lack your interactive `PATH` or SMTP password export.
 ## Scores look wrong
 
 Read `keywords.yaml`, remember the structural multipliers (title ×2, description ×1, negative ×−2),
-and note that matching is substring-based. Then run:
+and note that matching is word-boundary-aware, not raw substring — `ai` matches "AI Engineer" but
+not "domain" or "maintaining". Then run:
 
 ```bash
 employed rescore
 ```
 
-Title-only jobs have no description evidence and are explicitly marked.
+Title-only jobs have no description evidence and are explicitly marked. `rescore`'s output reports
+how many jobs' bands moved up or down, so you can confirm a weight edit had the expected effect.
+
+## A job I expected is missing from the report
+
+Check whether it scored too low for the band you're viewing (`employed new --band C,D` widens the
+view), or whether it was auto-filtered. `hardExclude`/`locations` in `keywords.yaml` remove a
+matching job from reports entirely, distinct from a low score:
+
+```bash
+employed new --show-filtered
+```
+
+This lists today's auto-filtered jobs with the specific reason each was excluded (for example
+`hard-exclude title: senior` or `location blocked: india`). If the filter is too aggressive, undo
+it for one job with `employed restore JOB_ID` — this only works on system-filtered jobs, not ones
+you dismissed yourself with `employed dismiss`. See
+[Job discovery](job-discovery.md#auto-filtered-jobs) for the full behavior.
 
 ## Gmail sync repeats or misses mail
 

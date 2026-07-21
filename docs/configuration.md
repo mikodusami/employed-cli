@@ -142,9 +142,22 @@ description:
 negative:
   senior: 8
   5+ years: 6
+hardExclude:
+  title:
+    - senior
+    - staff
+  description:
+    - "phd required"
+locations:
+  allow: []
+  block: []
+  allowUnknownLocation: true
 ```
 
-Matching is case-insensitive substring matching. Contributions are:
+Matching is case-insensitive and word-boundary-aware: a keyword only fires as a whole word or
+phrase, so `ai` matches "AI Engineer" but not "domain" or "maintaining", and `sql` matches "SQL"
+but not "NoSQL". This applies identically to `title`/`description`/`negative` weights and to
+`hardExclude`/`locations` below. Contributions to score are:
 
 ```text
 2 × sum(title weights)
@@ -152,11 +165,23 @@ Matching is case-insensitive substring matching. Contributions are:
 - 2 × sum(negative weights found in title or description)
 ```
 
-After editing weights, update existing open jobs without network access:
+`negative` only lowers score/band — a heavily-penalized job can still surface if enough positive
+signals outweigh it. `hardExclude` and `locations` are a separate, binary gate: any match removes
+the job from reports entirely, regardless of score. Both default to empty/permissive, so adding
+them is opt-in and changes nothing until populated. `locations.block` always wins over
+`locations.allow`; a job with no `location` field is kept unless `allowUnknownLocation: false`.
+Auto-filtered jobs are still stored (for dedupe, history, and later re-tuning) with a
+`filter_reason` explaining the match — see [Job discovery](job-discovery.md#auto-filtered-jobs)
+for how to review and undo one.
+
+After editing weights or filters, update existing open jobs without network access:
 
 ```bash
 employed rescore
 ```
+
+This prints how many jobs' bands moved up or down as a result, so a keyword-list edit's impact on
+already-stored jobs is visible rather than a silent bulk update.
 
 ## Temporary and multiple workspaces
 

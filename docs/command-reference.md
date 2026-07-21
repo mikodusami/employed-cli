@@ -44,27 +44,39 @@ Imports company entries from YAML. Omit `file` to use the configured default com
 
 ### `employed scan [--company <name>]`
 
-Scrapes a registered company, normalizes/deduplicates postings, scores them, and displays new jobs.
+Scrapes a registered company, normalizes/deduplicates postings, scores them, applies the
+`hardExclude`/`locations` filter, and displays new jobs. The success line reports an auto-filtered
+count split by cause, e.g. `18 seen, 14 new, 4 (4 keyword, 0 location) auto-filtered`.
 
 ### `employed rescore`
 
-Recomputes every open job using the current `keywords.yaml`; performs no HTTP or AI work.
+Recomputes every open job using the current `keywords.yaml`; performs no HTTP or AI work. Reports
+how many jobs' bands moved up or down as a result.
 
 ### `employed dismiss <jobId>`
 
-Marks one discovered job dismissed so future reports exclude it.
+Marks one discovered job dismissed so future reports exclude it. Distinct from an auto-filter (see
+`restore` below): this is your own manual decision and cannot be undone with `restore`.
+
+### `employed restore <jobId>`
+
+Reopens one job that the `hardExclude`/`locations` gate auto-filtered, clearing its filter reason.
+Refuses cleanly on a job that was never filtered, or was dismissed manually with `employed dismiss`.
 
 ## Runs and reports
 
 ### `employed run [--email] [--no-ai] [--tier A,B]`
 
 Executes the full daily orchestration. `--email` forces SMTP delivery, `--no-ai` disables AI and
-Gmail work for that run, and `--tier` bypasses normal tier scheduling.
+Gmail work for that run, and `--tier` bypasses normal tier scheduling. The terminal digest includes
+an auto-filtered count alongside seen/new/closed.
 
-### `employed new [--band A,B] [--today] [--json]`
+### `employed new [--band A,B] [--today] [--json] [--show-filtered]`
 
 Builds today's report, writes its dated Markdown file, and renders terminal or JSON output. Band
 filtering applies to all output formats. `--today` documents the current default behavior.
+`--show-filtered` additionally lists today's auto-filtered jobs with their reason, for review or
+tuning; the default view omits them.
 
 ## Scheduling
 

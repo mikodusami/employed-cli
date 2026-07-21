@@ -96,10 +96,18 @@ If `--company` is omitted, follow the command's current prompt/output guidance. 
 2. Normalizes titles, URLs, identifiers, and timestamps.
 3. Deduplicates by ATS identifier or a stable title/URL key.
 4. Scores new and refreshed jobs.
-5. Stores score, band, and every matched keyword.
+5. Applies the `hardExclude`/`locations` gate (see below) and stores score, band, matched
+   keywords, and — for excluded postings — a filter reason.
 6. Updates company health and last-success data.
 
-Re-scanning does not duplicate jobs. It refreshes `last_seen` and scoring signals.
+Re-scanning does not duplicate jobs. It refreshes `last_seen` and scoring signals. The success line
+reports auto-filtered postings alongside seen/new counts, split by cause, for example:
+
+```text
+✓ Highspot (lever): 18 seen, 14 new, 4 (4 keyword, 0 location) auto-filtered
+```
+
+The clause is omitted entirely (not printed as zero) when nothing was filtered.
 
 ## Self-healing
 
@@ -122,6 +130,9 @@ The pure scoring engine applies the profile in `keywords.yaml`:
 - description signals: configured weight × 1
 - negative signals found in combined title/description: configured weight × −2
 
+Matching is case-insensitive and word-boundary-aware — a keyword fires only as a whole word or
+phrase (`ai` matches "AI Engineer", not "domain"), not as a raw substring.
+
 Bands are:
 
 - A: score 30 or higher
@@ -138,7 +149,43 @@ Tune weights, then run:
 employed rescore
 ```
 
-This updates every open job without fetching a company or invoking AI.
+This updates every open job without fetching a company or invoking AI, and reports how many jobs'
+bands moved up or down as a result:
+
+```text
+✓ Re-scored 14 open jobs — 3 moved up, 1 moved down
+```
+
+## Auto-filtered jobs
+
+`negative` weights in `keywords.yaml` only lower score/band — a heavily-penalized job can still
+outscore the penalty and appear in reports. `hardExclude` and `locations` are a separate, stricter
+gate: a match removes the job from reports entirely. This is useful for terms that are always
+disqualifying for you (seniority level, a security clearance requirement) rather than just
+undesirable. See [Configuration](configuration.md#keywordsyaml) for the full syntax; both sections
+default to empty, so nothing is filtered until you populate them.
+
+An excluded job is still stored (so dedupe, history, and later re-tuning all still work), marked
+`dismissed`, and tagged with the specific match that excluded it. Review what got filtered:
+
+```bash
+employed new --show-filtered
+```
+
+This adds an "Auto-filtered today" table below the normal listing, showing each job's id, title,
+location, and reason (for example `hard-exclude title: senior` or `location blocked: india`). The
+default `employed new` (no flag) never shows these — the filter is silent by design, but never
+un-reviewable. If a filter turns out to be too aggressive, undo it for one job:
+
+```bash
+employed restore JOB_ID
+```
+
+`restore` only works on system-filtered jobs (`filter_reason` set); it refuses with a clear message
+on a job you dismissed manually with `employed dismiss`, since that was your own decision, not the
+filter's. Once a job is filtered or dismissed, a later scrape never silently reopens or re-labels
+it — even if you later remove the disqualifying term from `keywords.yaml` — `restore` is the only
+way back to `open`.
 
 ## Job lifecycle
 
@@ -150,4 +197,6 @@ employed dismiss JOB_ID
 ```
 
 Dismissal affects reports but does not create or alter an application. If you applied to a job, use
-the separate CRM commands described in [Application tracking](application-tracking.md).
+the separate CRM commands described in [Application tracking](application-tracking.md). A manual
+`dismiss` is distinct from an auto-filter (see above): only an auto-filtered job can be undone with
+`employed restore`.

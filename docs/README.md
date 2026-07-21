@@ -11,7 +11,7 @@ guides can be used as references.
 2. [Configuration](configuration.md) — understand every setting in `config.yaml`,
    `companies.yaml`, `known_ats.yaml`, and `keywords.yaml`.
 3. [Job discovery and scoring](job-discovery.md) — company tiers, ATS detection, generated
-   scrapers, scanning, healing, score bands, and dismissing jobs.
+   scrapers, scanning, healing, score bands, auto-filtering, and dismissing jobs.
 4. [Daily operation](daily-operation.md) — `run`, reports, SMTP delivery, scheduling, logs, and
    health checks.
 
