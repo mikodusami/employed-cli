@@ -37,7 +37,7 @@ import { createLogger, type LogLevel } from './util/log.js';
 /** Builds and executes the employed CLI. */
 async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
-  const ui = createUI(isAnimationEnabled);
+  const ui = createUI(isAnimationEnabled, process.argv.includes('--quiet'));
   const config = new ConfigService();
   const stages = new StageBus();
   const trace = process.argv.includes('--trace');
