@@ -68,19 +68,37 @@ site cannot expose its ATS within this intentionally small crawl budget.
 
 ## Generated scrapers
 
-If no ATS matches and AI is enabled, employed can generate a data-only scraper configuration:
+If no ATS matches and AI is enabled, employed can generate a versioned, data-only scraper plan:
 
 ```bash
 employed company generate "Company Name"
 ```
 
-The generation path strips scripts/styles/noise, keeps selector-relevant HTML, limits the input
-size, asks the active provider for selectors and pagination, executes the result, and validates its
-output before saving it. A syntactically valid but ineffective scraper gets one feedback retry.
+The AI never writes executable code. It selects one of two hardened runtimes:
 
-Static configurations use HTTP plus Cheerio. Render-only pages use one shared Playwright Chromium
+- `dom`: selectors, bounded pre-extraction navigation, and static or Playwright pagination.
+- `api`: a same-domain or known-ATS JSON endpoint, safe dot paths, and bounded page/offset
+  pagination. Only `accept` and `content-type` request headers are permitted.
+
+Generation is an explicit evidence loop. It captures static HTML first, distills the DOM and link
+patterns, plans, executes, and validates. A failed plan is returned to the AI as structured retry
+feedback. Sparse client-rendered pages skip weak static planning and escalate directly to rendered
+DOM plus a bounded log of JSON-like XHR/fetch responses. Hidden job APIs are preferred when that
+network evidence exposes them.
+
+At most four attempts run by default. Every static or browser capture has an absolute deadline;
+browser pages are closed when it expires. A successful plan is persisted as version 2 with method
+`generated-api`, `generated-static`, or `generated-playwright`. Existing version-1 DOM configs are
+wrapped automatically by database migration 4.
+
+Static plans use HTTP plus Cheerio. Render-only pages use one shared Playwright Chromium
 instance, block images/fonts/media, and support next links, URL parameters, load-more buttons, and
 bounded infinite scrolling.
+
+If every attempt fails, the company becomes `manual-review`. Employed writes captured HTML, network
+evidence, navigation history, and every attempted plan with validation errors under
+`~/.employed/debug/<company>-<timestamp>/`. This bundle is designed for a quick manual plan repair
+or confirmation that the company belongs in `known_ats.yaml`.
 
 ## Scanning
 
@@ -115,7 +133,7 @@ A previously healthy scraper yielding nothing or throwing once becomes degraded.
 failure, the shared heal budget allows repair:
 
 - ATS companies re-run detection first in case the company changed providers.
-- Generated companies regenerate and validate their configuration.
+- Generated companies re-enter generation at rendered/network evidence because the site changed.
 - Successful repair resets failures and retries the scrape once in the same run.
 - Failed repair becomes broken and appears in the daily report and `doctor`.
 
