@@ -25,18 +25,33 @@ import { register as registerSchedule } from './commands/schedule.js';
 import { register as registerStats } from './commands/stats.js';
 import { register as registerSync } from './commands/sync.js';
 import type { CommandContext } from './commands/types.js';
-import { VERSION } from './constants.js';
+import { LOGS_DIR, VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
 import { SignatureDetector, type AtsDetector } from './scrape/detect.js';
 import { createUI } from './ui/index.js';
 import { AppError } from './util/errors.js';
 import { buildHttpClient, type HttpClient, RobotsGate } from './util/http.js';
+import { createLogger, type LogLevel } from './util/log.js';
 
 /** Builds and executes the employed CLI. */
 async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
   const ui = createUI(isAnimationEnabled);
   const config = new ConfigService();
+  const trace = process.argv.includes('--trace');
+  const logger = createLogger({
+    logsDirectory: LOGS_DIR,
+    command: commandName(process.argv.slice(2)),
+    consoleLevel: trace || process.argv.includes('--verbose')
+      ? 'debug'
+      : process.argv.includes('--quiet')
+        ? 'warn'
+        : 'info',
+    retentionDays: loadRetentionDays(config),
+    trace,
+    consoleSink: (level, message) => writeLogToUi(ui, level, message),
+  });
+  logger.event('info', 'Command started.', { argv: process.argv.slice(2) }, false);
   let database: ReturnType<typeof createDb> | undefined;
   let repositories: Repositories | undefined;
   let http: HttpClient | undefined;
@@ -73,6 +88,7 @@ async function run(): Promise<void> {
   const context: CommandContext = {
     ui,
     config,
+    log: logger,
     get db() {
       return getDatabase();
     },
@@ -94,7 +110,9 @@ async function run(): Promise<void> {
     .version(VERSION)
     .description('A personal job-search operation on autopilot.')
     .option('--no-animation', 'disable animated terminal output')
-    .option('--verbose', 'show HTTP cache diagnostics');
+    .option('--verbose', 'show debug diagnostics')
+    .option('--quiet', 'show only warnings and errors')
+    .option('--trace', 'show debug stages with elapsed milliseconds');
 
   registerInit(program, context);
   registerCompany(program, context);
@@ -127,9 +145,42 @@ async function run(): Promise<void> {
 
   try {
     await program.parseAsync(process.argv);
+    logger.event('info', 'Command finished.', undefined, false);
+  } catch (error: unknown) {
+    logger.event('error', 'Command failed.', { error: formatFatalError(error) }, false);
+    throw error;
   } finally {
     database?.close();
+    if (logger.filePath) {
+      ui.info(`full log: ${logger.filePath}`);
+    }
   }
+}
+
+function loadRetentionDays(config: ConfigService): number {
+  try {
+    return config.loadApp().logging.retentionDays;
+  } catch {
+    return 14;
+  }
+}
+
+function writeLogToUi(ui: ReturnType<typeof createUI>, level: LogLevel, message: string): void {
+  if (level === 'error') {
+    ui.error(message);
+  } else if (level === 'warn') {
+    ui.warn(message);
+  } else {
+    ui.info(message);
+  }
+}
+
+function commandName(arguments_: readonly string[]): string {
+  const commands = arguments_.filter((argument) => !argument.startsWith('-'));
+  const parent = commands[0] ?? 'help';
+  return ['company', 'schedule'].includes(parent) && commands[1]
+    ? `${parent}-${commands[1]}`
+    : parent;
 }
 
 try {
