@@ -82,7 +82,7 @@ async function run(): Promise<void> {
       ai = buildAiRunner({
         repos: repositories ??= new Repositories(getDatabase()),
         config: config.loadApp(),
-        debug: process.argv.includes('--verbose') ? (message) => ui.info(message) : undefined,
+        debug: (message) => logger.child('ai').debug(message),
       });
       isAiInitialized = true;
     }
