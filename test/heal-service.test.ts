@@ -73,7 +73,7 @@ test('ATS healing re-detects and smoke-tests even without AI', async () => {
   database.close();
 });
 
-test('generated heal without AI stays degraded and failed generation becomes broken', async () => {
+test('generated heal without AI stays degraded and failed generation needs manual review', async () => {
   const database = createDb(':memory:');
   const repositories = new Repositories(database);
   const company = generatedCompany(repositories, config('article.old'));
@@ -100,6 +100,7 @@ test('generated heal without AI stays degraded and failed generation becomes bro
       ok: false,
       reasons: ['selectors still broken'],
       pendingPlaywright: false,
+      diagnosticsPath: '/tmp/employed-diagnostics',
     }),
   } as unknown as GenerateService;
   const failure = await new HealService(
@@ -112,7 +113,7 @@ test('generated heal without AI stays degraded and failed generation becomes bro
     new HealBudget({ maxPerCompany: 2, maxPerRun: 5 }),
   );
   assert.equal(failure.healed, false);
-  assert.equal(repositories.companies.findByName('Fixture')?.health, 'broken');
+  assert.equal(repositories.companies.findByName('Fixture')?.health, 'manual-review');
   database.close();
 });
 
@@ -137,7 +138,12 @@ class ConfigAi implements AiRunner {
   public constructor(private readonly value: ScraperConfig) {}
 
   public async runJson<Result>(task: AiTask<Result>): Promise<Result> {
-    return task.schema.parse(this.value);
+    return task.schema.parse({
+      ...this.value,
+      mode: 'dom',
+      navigate: [],
+      planVersion: 2,
+    });
   }
 }
 
