@@ -771,3 +771,26 @@ reports `bandUp`/`bandDown` counts (ranked A>B>C>D) alongside `updated`, so a ma
 keyword-list change has a visible before/after impact on already-stored jobs rather than a silent
 bulk update. A job with no prior band (never scored) is excluded from the diff — there is nothing
 meaningful to compare against yet.
+
+## 2026-07-21T16:54:31-04:00 — One structured event stream drives durable logs and live progress
+
+Every command owns one best-effort JSONL logger. Child scopes name pipeline areas and companies,
+while `StageBus` connects a command's single progress handle to service events without importing UI
+code into services or writing the same event twice. Files retain debug-level truth regardless of
+terminal filtering; default, verbose, quiet, and trace only change the human-facing projection.
+
+## 2026-07-21T16:54:31-04:00 — Long operations report bounded stages through dependency injection
+
+Detection, capture, planning, execution, validation, scraping, healing, and run orchestration accept
+stage reporters at their existing seams. Absolute detection and capture deadlines remain the safety
+mechanism; progress identifies the active stage, and trace records elapsed time between stage
+transitions. Multi-company commands add position in the command layer because only that layer knows
+the overall batch size.
+
+## 2026-07-21T16:54:31-04:00 — Observability failures never become command failures
+
+Each JSON object is synchronously appended as one line so completed events survive process crashes.
+Directory creation, rotation, and writes are guarded; the first failure produces one console warning
+and disables further file writes for that run. Log rotation happens once at command startup using
+`logging.retentionDays`, and the final log path bypasses quiet filtering because discoverability of
+the complete record is an acceptance guarantee.
