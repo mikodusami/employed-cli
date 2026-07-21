@@ -7,9 +7,14 @@ Use `employed COMMAND --help` for the installed version's authoritative syntax.
 ```text
 -V, --version       print the version
 --no-animation      disable animated/color-rich TTY output
---verbose           show HTTP cache diagnostics
+--verbose           show debug diagnostics in the terminal
+--quiet             show only warnings/errors and the final log path
+--trace             show debug stages and elapsed milliseconds
 -h, --help          show help
 ```
+
+All events, including debug data hidden by the selected terminal level, are written to the
+per-command JSONL file whose path is printed before exit.
 
 ## Workspace and diagnostics
 
