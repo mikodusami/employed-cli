@@ -38,8 +38,8 @@ test('logger writes scoped JSONL, filters console, and rotates old logs', () => 
   assert.equal(existsSync(old), false);
   const events = readEvents(logger.filePath ?? '');
   assert.deepEqual(events.map(({ scope, level }) => [scope, level]), [
-    ['app:capture', 'debug'],
-    ['app:scrape:Meta', 'info'],
+    ['capture', 'debug'],
+    ['scrape:Meta', 'info'],
   ]);
   assert.deepEqual(consoleEvents, [['info', 'finished']]);
 });
