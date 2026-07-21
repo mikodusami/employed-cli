@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import type { ImportProgress } from '../services/company.js';
 import { ScrapeRuntime } from '../services/scrape-runtime.js';
 import type { CommandContext } from './types.js';
+import { bindProgress } from './progress.js';
 
 /** Adds the company import command to the root program. */
 export function register(program: Command, context: CommandContext): void {
@@ -15,7 +16,14 @@ export function register(program: Command, context: CommandContext): void {
 
 async function importCompanies(context: CommandContext, file?: string): Promise<void> {
   const companiesFile = context.config.loadCompanies(file);
-  const spinner = context.ui.spinner('Importing companies').start();
+  let current = 0;
+  let currentName = '';
+  const total = companiesFile.companies.length;
+  const progress = bindProgress(
+    context,
+    'Importing companies',
+    () => (currentName ? `[${current}/${total}] ${currentName} — ` : ''),
+  );
   const runtime = new ScrapeRuntime({
     repositories: context.repos,
     http: context.http,
@@ -23,13 +31,24 @@ async function importCompanies(context: CommandContext, file?: string): Promise<
     ai: context.ai,
     config: context.config.loadApp(),
     keywords: context.config.loadKeywords(),
+    report: context.stages.report,
   });
 
   try {
-    const summary = await runtime.companies.importFromConfig(companiesFile, (progress) => {
-      spinner.update(formatProgress(progress));
+    const summary = await runtime.companies.importFromConfig(companiesFile, (event) => {
+      if (event.outcome === 'started') {
+        current += 1;
+        currentName = event.name;
+        return;
+      }
+      const message = formatProgress(event);
+      const failed = event.outcome === 'failed';
+      progress.handle.substep(`${failed ? '✗' : '✓'} ${message}`);
+      context.log
+        .child(`import:${event.name}`)
+        .event(failed ? 'error' : 'info', message, undefined, false);
     });
-    spinner.succeed('Company import complete');
+    progress.handle.succeed('Company import complete');
     context.ui.heading('Import summary');
     context.ui.info(`created: ${summary.created}`);
     context.ui.info(`skipped-duplicate: ${summary.skipped}`);
@@ -38,9 +57,10 @@ async function importCompanies(context: CommandContext, file?: string): Promise<
       context.ui.warn(`${failure.name}: ${failure.reason}`);
     }
   } catch (error: unknown) {
-    spinner.fail('Company import failed');
+    progress.handle.fail('Company import failed');
     throw error;
   } finally {
+    progress.release();
     await runtime.close();
   }
 }
