@@ -104,6 +104,17 @@ stats:
 - Keyword correlations below `minKeywordSample` applications are hidden as noise.
 - Résumé groups below `minResumeSample` are shown as low-signal.
 
+### Structured log retention
+
+```yaml
+logging:
+  retentionDays: 14
+```
+
+Every command writes newline-delimited JSON events to `logs/` beneath the active workspace.
+`retentionDays` controls the inexpensive cleanup performed when a command starts; log files older
+than this many days are deleted. The value must be at least 1.
+
 ## `companies.yaml`
 
 ```yaml
