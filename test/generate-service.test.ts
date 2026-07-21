@@ -11,7 +11,7 @@ import type { AiProvider, AiRequest, AiRunner, AiTask, ProviderStatus } from '..
 import { AppConfigSchema } from '../src/config/schema.js';
 import { createDb, Repositories } from '../src/db/index.js';
 import { BrowserPool } from '../src/scrape/browser.js';
-import type { DomPlan, ScraperPlan } from '../src/scrape/plan.js';
+import type { ApiPlan, DomPlan, ScraperPlan } from '../src/scrape/plan.js';
 import { GenerateService } from '../src/services/generate.js';
 import type { FetchResult, HttpClient } from '../src/util/http.js';
 
@@ -82,6 +82,22 @@ test('sparse static evidence skips directly to network-rendered planning', async
   setup.database.close();
 });
 
+test('network escalation can persist an API plan on attempt three', async () => {
+  const sparse = '<html><body><div id="app"></div></body></html>';
+  const http = new RoutingHttp(sparse);
+  const setup = createSetup(sparse, http);
+  const ai = new SequenceAi([apiPlan()]);
+  const result = await setup
+    .service(ai, new RenderedPool(fixture))
+    .generateFor(setup.company);
+
+  assert.equal(result.status, 'generated');
+  assert.equal(result.status === 'generated' ? result.strategy : null, 'api');
+  assert.equal(setup.repositories.companies.findByName('Fixture')?.scrape_method, 'generated-api');
+  assert.equal(ai.calls.length, 1);
+  setup.database.close();
+});
+
 test('four failed plans produce a complete diagnostics bundle and manual review health', async () => {
   const navigation = `
     <nav>
@@ -147,6 +163,20 @@ class PageHttp implements HttpClient {
   }
 }
 
+class RoutingHttp extends PageHttp {
+  public override async fetchText(url: string): Promise<FetchResult> {
+    if (url === 'https://api.example.com/jobs') {
+      return {
+        finalUrl: url,
+        status: 200,
+        body: JSON.stringify({ jobs: [{ title: 'Engineer', url: '/jobs/1' }] }),
+        contentType: 'application/json',
+      };
+    }
+    return super.fetchText(url);
+  }
+}
+
 class RenderedPool extends BrowserPool {
   public borrows = 0;
 
@@ -182,7 +212,7 @@ class RenderedPool extends BrowserPool {
   }
 }
 
-function createSetup(html = fixture) {
+function createSetup(html = fixture, http: HttpClient = new PageHttp(html)) {
   const database = createDb(':memory:');
   const repositories = new Repositories(database);
   const company = repositories.companies.insert({
@@ -195,9 +225,37 @@ function createSetup(html = fixture) {
     repositories,
     company,
     service: (ai: AiRunner | null, browsers?: BrowserPool) =>
-      new GenerateService(repositories, new PageHttp(html), ai, browsers, {
+      new GenerateService(repositories, http, ai, browsers, {
         diagnosticsDirectory,
       }),
+  };
+}
+
+function apiPlan(): ApiPlan {
+  return {
+    mode: 'api',
+    planVersion: 2,
+    request: {
+      method: 'GET',
+      urlTemplate: 'https://api.example.com/jobs',
+      bodyTemplate: null,
+      headers: { accept: 'application/json' },
+    },
+    response: {
+      itemsPath: 'jobs',
+      fields: {
+        title: 'title',
+        url: 'url',
+        location: null,
+        department: null,
+        externalId: null,
+      },
+      urlPrefix: 'https://example.com',
+      totalPath: null,
+    },
+    pagination: { type: 'none', pageSize: 20, maxPages: 1 },
+    confidence: 0.95,
+    notes: 'Network endpoint fixture.',
   };
 }
 
