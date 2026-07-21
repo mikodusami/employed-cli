@@ -76,6 +76,7 @@ async function run(): Promise<void> {
       config.loadApp().run.respectRobots,
       config.loadKnownAts(),
       stages.report,
+      config.loadApp().capture.staticDeadlineMs,
     ));
   const getAi = (): AiRunner | null => {
     if (!isAiInitialized) {
