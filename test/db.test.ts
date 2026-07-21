@@ -32,7 +32,7 @@ test('fresh database contains eight tables with foreign keys and WAL enabled', (
     'jobs',
     'runs',
   ]);
-  assert.equal(database.pragma('user_version', { simple: true }), 3);
+  assert.equal(database.pragma('user_version', { simple: true }), 4);
   assert.equal(database.pragma('foreign_keys', { simple: true }), 1);
   assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
   const companyColumns = database
@@ -54,11 +54,11 @@ test('fresh database contains eight tables with foreign keys and WAL enabled', (
   ]);
 
   migrate(database);
-  assert.equal(database.pragma('user_version', { simple: true }), 3);
+  assert.equal(database.pragma('user_version', { simple: true }), 4);
   database.close();
 });
 
-test('migrations 2 and 3 upgrade a version-1 database in place', () => {
+test('migrations 2 through 4 upgrade storage and wrap legacy scraper configs', () => {
   const database = new Database(':memory:');
   // Bootstrap a real version-1 schema (not just the pragma) so migration 3's ALTER TABLE has an
   // actual `jobs` table to add `filter_reason` to.
@@ -66,10 +66,21 @@ test('migrations 2 and 3 upgrade a version-1 database in place', () => {
     database,
     migrations.filter((migration) => migration.version === 1),
   );
+  database
+    .prepare(
+      `INSERT INTO companies (name, careers_url, scraper_config, created_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+    .run(
+      'Legacy',
+      'https://example.com/careers',
+      JSON.stringify({ strategy: 'static', listSelector: '.job' }),
+      new Date().toISOString(),
+    );
 
   migrate(database);
 
-  assert.equal(database.pragma('user_version', { simple: true }), 3);
+  assert.equal(database.pragma('user_version', { simple: true }), 4);
   const jobColumns = database
     .pragma('table_info(jobs)')
     .map((column) => (column as { name: string }).name);
@@ -80,6 +91,16 @@ test('migrations 2 and 3 upgrade a version-1 database in place', () => {
     )
     .get();
   assert.equal(cacheTable?.name, 'http_cache');
+  const migratedConfig = database
+    .prepare<[], { scraper_config: string }>('SELECT scraper_config FROM companies')
+    .get()?.scraper_config;
+  assert.deepEqual(JSON.parse(migratedConfig ?? ''), {
+    strategy: 'static',
+    listSelector: '.job',
+    mode: 'dom',
+    navigate: [],
+    planVersion: 2,
+  });
   database.close();
 });
 
