@@ -1,38 +1,50 @@
-/** Orchestrates distillation, AI generation, execution, validation, retry, and persistence. */
+/** Explicit capture → analyze → plan → execute → validate generation state machine. */
 import { createHash } from 'node:crypto';
 
 import { load } from 'cheerio';
 import { z } from 'zod';
-import type { Page } from 'playwright';
 
 import { AiUnavailableError } from '../ai/errors.js';
 import { renderTemplate } from '../ai/templates.js';
 import type { AiRunner } from '../ai/types.js';
-import type { CompanyRow, Repositories } from '../db/index.js';
+import { EMPLOYED_DIR } from '../constants.js';
+import type { CompanyRow, Repositories, ScrapeMethod } from '../db/index.js';
+import { analyzeCapture, type AnalysisPacket } from '../scrape/analyze.js';
 import { BrowserPool } from '../scrape/browser.js';
-import { ScraperConfigSchema, type ScraperConfig } from '../scrape/config.js';
-import { distillDom } from '../scrape/distill.js';
-import { GeneratedSource, PlaywrightGeneratedSource } from '../scrape/generated.js';
-import { validateExtraction, type ValidationVerdict } from '../scrape/validate.js';
-import { RequiresRenderError } from '../util/errors.js';
+import {
+  capturePage,
+  type CaptureDeadlines,
+  type CaptureResult,
+  type CaptureStrategy,
+} from '../scrape/capture/index.js';
+import {
+  writeDiagnosticsBundle,
+  type AttemptDiagnostic,
+} from '../scrape/diagnostics.js';
+import { ScraperPlanSchema, type ScraperPlan } from '../scrape/plan.js';
+import { ApiExecutor, type ExecutionReport } from '../scrape/runtime/api.js';
+import { DomExecutor } from '../scrape/runtime/dom.js';
+import { validateExtraction } from '../scrape/validate.js';
 import type { HttpClient } from '../util/http.js';
 
-const TEMPLATE_ID = 'scraper_gen_v1';
+const TEMPLATE_ID = 'scraper_plan_v2';
 const AI_TIMEOUT_MS = 120_000;
+const MIN_JOB_LINKS = 3;
 
 export type GenerateResult =
   | {
       status: 'generated';
       ok: true;
       jobCount: number;
-      strategy: ScraperConfig['strategy'];
+      strategy: 'api' | 'static' | 'playwright';
       confidence: number;
     }
   | {
       status: 'failed';
       ok: false;
       reasons: readonly string[];
-      pendingPlaywright: boolean;
+      pendingPlaywright: false;
+      diagnosticsPath: string;
     }
   | {
       status: 'skipped';
@@ -40,176 +52,190 @@ export type GenerateResult =
       reason: string;
     };
 
-/** Owns the hard rule that generated configurations are persisted only after execution. */
+export interface GenerateOptions {
+  evidenceFirst?: boolean;
+}
+
+export interface GenerateRuntimeOptions {
+  deadlines?: CaptureDeadlines;
+  maxAttempts?: number;
+  diagnosticsDirectory?: string;
+}
+
+/** Owns the rule that only successfully executed and validated plans are persisted. */
 export class GenerateService {
+  private readonly deadlines: CaptureDeadlines;
+  private readonly maxAttempts: number;
+  private readonly diagnosticsDirectory: string;
+
   public constructor(
     private readonly repositories: Repositories,
     private readonly http: HttpClient,
     private readonly ai: AiRunner | null,
     private readonly browsers?: BrowserPool,
-  ) {}
+    options: GenerateRuntimeOptions = {},
+  ) {
+    this.deadlines = options.deadlines ?? {
+      staticDeadlineMs: 45_000,
+      playwrightDeadlineMs: 90_000,
+    };
+    this.maxAttempts = options.maxAttempts ?? 4;
+    this.diagnosticsDirectory = options.diagnosticsDirectory ?? EMPLOYED_DIR;
+  }
 
-  public async generateFor(company: CompanyRow): Promise<GenerateResult> {
+  public async generateFor(
+    company: CompanyRow,
+    options: GenerateOptions = {},
+  ): Promise<GenerateResult> {
     if (!this.ai) {
       return { status: 'skipped', ok: false, reason: 'AI unavailable.' };
     }
 
-    const response = await this.http.fetchText(company.careers_url);
-    if (response.status < 200 || response.status >= 300) {
-      return {
-        status: 'failed',
-        ok: false,
-        reasons: [`Careers page returned HTTP ${response.status}.`],
-        pendingPlaywright: false,
-      };
-    }
-    let generationHtml = response.body;
-    let preferBrowser = false;
-    if (countLikelyJobLinks(response.body) < 3 && this.browsers) {
-      generationHtml = await this.browsers.page((page) =>
-        captureRenderedHtml(page, response.finalUrl),
-      );
-      preferBrowser = true;
-    }
-    const distilled = distillDom(generationHtml);
-    const baseDigest = digest(distilled.dom);
-    let feedback = '';
-    let finalReasons: readonly string[] = [];
+    const attempts: AttemptDiagnostic[] = [];
+    let capture: CaptureResult | null = null;
+    let analysis: AnalysisPacket | null = null;
+    let feedback = 'None. This is the first plan attempt.';
+    let attempt = options.evidenceFirst ? 3 : 1;
+    let finalReasons: readonly string[] = ['No plan attempt completed.'];
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      let config: ScraperConfig;
+    while (attempt <= this.maxAttempts) {
+      const strategy = captureStrategy(attempt);
+      if (!capture || capture.strategy !== strategy) {
+        try {
+          capture = await capturePage(
+            strategy,
+            company.careers_url,
+            this.http,
+            this.browsers,
+            this.deadlines,
+          );
+          analysis = analyzeCapture(capture);
+        } catch (error: unknown) {
+          finalReasons = [errorMessage(error)];
+          attempts.push({ attempt, plan: null, errors: finalReasons });
+          if (strategy === 'static' && this.browsers) {
+            attempt = 3;
+            continue;
+          }
+          break;
+        }
+      }
+
+      if (
+        attempt < 3 &&
+        this.browsers &&
+        countLikelyJobLinks(capture.html) < MIN_JOB_LINKS
+      ) {
+        feedback = 'Static HTML was an empty shell; use rendered and network evidence.';
+        attempt = 3;
+        capture = null;
+        analysis = null;
+        continue;
+      }
+
+      if (!analysis) {
+        finalReasons = ['Capture analysis was unavailable.'];
+        break;
+      }
+
+      let plan: ScraperPlan;
       try {
-        config = await this.ai.runJson({
+        plan = await this.ai.runJson({
           templateId: TEMPLATE_ID,
-          input: buildPrompt(company, distilled.dom, distilled.linkDensityHint, feedback),
-          inputDigest: attempt === 0 ? baseDigest : digest(`${baseDigest}\n${feedback}`),
-          schema: ScraperConfigSchema,
+          input: buildPrompt(company, analysis, feedback),
+          inputDigest: digest(JSON.stringify({ analysis, feedback })),
+          schema: ScraperPlanSchema,
           timeoutMs: AI_TIMEOUT_MS,
         });
       } catch (error: unknown) {
         if (error instanceof AiUnavailableError) {
           return { status: 'skipped', ok: false, reason: 'AI unavailable.' };
         }
-        throw error;
+        finalReasons = [errorMessage(error)];
+        attempts.push({ attempt, plan: null, errors: finalReasons });
+        attempt += 1;
+        continue;
       }
-      const execution = await executeAndValidate(
-        this.http,
-        this.browsers,
-        company,
-        config,
-        preferBrowser,
-      );
-      if (execution.requiresRender) {
-        const pendingConfig = { ...config, strategy: 'playwright' as const };
-        this.repositories.companies.updateMethod(
-          company.id,
-          'generated-playwright',
-          null,
-          JSON.stringify(pendingConfig),
-        );
-        return {
-          status: 'failed',
-          ok: false,
-          reasons: ['Generated configuration requires browser rendering.'],
-          pendingPlaywright: true,
-        };
-      }
-      if (execution.verdict.ok) {
-        this.repositories.withTransaction(() => {
-          const persistedConfig = { ...config, strategy: execution.strategy };
-          this.repositories.companies.updateMethod(
-            company.id,
-            execution.strategy === 'playwright'
-              ? 'generated-playwright'
-              : 'generated-static',
-            null,
-            JSON.stringify(persistedConfig),
-          );
-          this.repositories.companies.recordSuccess(company.id, execution.jobCount);
-        });
+
+      const report = await executePlan(this.http, this.browsers, company, plan, this.deadlines);
+      const reasons = validateReport(report);
+      attempts.push({ attempt, plan, errors: reasons });
+      if (reasons.length === 0) {
+        persistSuccess(this.repositories, company, plan, report.postings.length);
         return {
           status: 'generated',
           ok: true,
-          jobCount: execution.jobCount,
-          strategy: execution.strategy,
-          confidence: config.confidence,
+          jobCount: report.postings.length,
+          strategy: plan.mode === 'api' ? 'api' : plan.strategy,
+          confidence: plan.confidence,
         };
       }
-      finalReasons = execution.verdict.reasons;
-      feedback = finalReasons.join('\n');
+
+      finalReasons = reasons;
+      feedback = JSON.stringify({ priorPlan: plan, validationErrors: reasons }, null, 2);
+      attempt += 1;
     }
 
-    this.repositories.companies.updateHealth(company.id, 'broken');
-    return { status: 'failed', ok: false, reasons: finalReasons, pendingPlaywright: false };
+    const diagnosticsPath = writeDiagnosticsBundle(
+      company.name,
+      capture,
+      analysis,
+      attempts,
+      this.diagnosticsDirectory,
+    );
+    this.repositories.companies.updateHealth(company.id, 'manual-review');
+    return {
+      status: 'failed',
+      ok: false,
+      reasons: finalReasons,
+      pendingPlaywright: false,
+      diagnosticsPath,
+    };
   }
 }
 
-interface ExecutionResult {
-  verdict: ValidationVerdict;
-  jobCount: number;
-  requiresRender: boolean;
-  strategy: ScraperConfig['strategy'];
-}
-
-async function executeAndValidate(
+async function executePlan(
   http: HttpClient,
   browsers: BrowserPool | undefined,
   company: CompanyRow,
-  config: ScraperConfig,
-  preferBrowser: boolean,
-): Promise<ExecutionResult> {
-  try {
-    const useBrowser = preferBrowser || config.strategy === 'playwright';
-    if (useBrowser && !browsers) {
-      return renderRequired();
-    }
-    let postings;
-    if (useBrowser) {
-      if (!browsers) {
-        return renderRequired();
-      }
-      postings = await new PlaywrightGeneratedSource(browsers, config).fetchPostings(company);
-    } else {
-      postings = await new GeneratedSource(http, config).fetchPostings(company);
-    }
-    return {
-      verdict: validateExtraction(postings),
-      jobCount: postings.length,
-      requiresRender: false,
-      strategy: useBrowser ? 'playwright' : 'static',
-    };
-  } catch (error: unknown) {
-    if (error instanceof RequiresRenderError) {
-      if (browsers) {
-        const postings = await new PlaywrightGeneratedSource(browsers, config).fetchPostings(
-          company,
-        );
-        return {
-          verdict: validateExtraction(postings),
-          jobCount: postings.length,
-          requiresRender: false,
-          strategy: 'playwright',
-        };
-      }
-      return renderRequired();
-    }
-    const reason = error instanceof Error ? error.message : String(error);
-    return {
-      verdict: { ok: false, reasons: [`Generated scraper execution failed: ${reason}`] },
-      jobCount: 0,
-      requiresRender: false,
-      strategy: preferBrowser ? 'playwright' : 'static',
-    };
+  plan: ScraperPlan,
+  deadlines: CaptureDeadlines,
+): Promise<ExecutionReport> {
+  if (plan.mode === 'api') {
+    return new ApiExecutor(http, plan, deadlines.staticDeadlineMs).execute(company);
   }
+  return new DomExecutor(http, browsers, plan).execute(company);
 }
 
-function renderRequired(): ExecutionResult {
-  return {
-    verdict: { ok: false, reasons: ['Generated scraper requires browser rendering.'] },
-    jobCount: 0,
-    requiresRender: true,
-    strategy: 'playwright',
-  };
+function validateReport(report: ExecutionReport): string[] {
+  const reasons = [...report.errors];
+  const verdict = validateExtraction(report.postings);
+  if (!verdict.ok) {
+    reasons.push(...verdict.reasons);
+  }
+  return [...new Set(reasons)];
+}
+
+function persistSuccess(
+  repositories: Repositories,
+  company: CompanyRow,
+  plan: ScraperPlan,
+  jobCount: number,
+): void {
+  const method: ScrapeMethod =
+    plan.mode === 'api'
+      ? 'generated-api'
+      : plan.strategy === 'playwright'
+        ? 'generated-playwright'
+        : 'generated-static';
+  repositories.withTransaction(() => {
+    repositories.companies.updateMethod(company.id, method, null, JSON.stringify(plan));
+    repositories.companies.recordSuccess(company.id, jobCount);
+  });
+}
+
+function captureStrategy(attempt: number): CaptureStrategy {
+  return attempt < 3 ? 'static' : 'playwright-network';
 }
 
 function countLikelyJobLinks(html: string): number {
@@ -217,32 +243,34 @@ function countLikelyJobLinks(html: string): number {
   return $('a[href]')
     .filter((_index, element) => {
       const link = $(element);
-      const signal = `${link.attr('href') ?? ''} ${link.text()}`;
-      return /job|career|position|opening|role|vacan/i.test(signal);
+      return /job|career|position|opening|role|vacan/i.test(
+        `${link.attr('href') ?? ''} ${link.text()}`,
+      );
     })
     .length;
 }
 
-async function captureRenderedHtml(page: Page, url: string): Promise<string> {
-  await page.goto(url, { waitUntil: 'networkidle' });
-  return page.content();
-}
-
 function buildPrompt(
   company: CompanyRow,
-  dom: string,
-  linkDensityHint: string,
+  analysis: AnalysisPacket,
   retryFeedback: string,
 ): string {
   return renderTemplate(TEMPLATE_ID, {
     company: company.name,
     url: company.careers_url,
-    schema: JSON.stringify(z.toJSONSchema(ScraperConfigSchema), null, 2),
-    retry_feedback: retryFeedback || 'None. This is the first domain-validation attempt.',
-    dom: `${linkDensityHint}\n${dom}`,
+    schema: JSON.stringify(z.toJSONSchema(ScraperPlanSchema), null, 2),
+    retry_feedback: retryFeedback,
+    navigation_path: JSON.stringify(analysis.navigationPath),
+    link_patterns: JSON.stringify(analysis.linkPatterns, null, 2),
+    network_summary: analysis.networkSummary,
+    dom: analysis.distilledDom,
   });
 }
 
 function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
