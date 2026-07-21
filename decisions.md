@@ -662,6 +662,15 @@ behind them, so a user can operate safely without reading source code while stil
 idempotency, degradation, event-history, credential, and backup boundaries. The docs index is the
 stable entry point and the root README links to it.
 
+## 2026-07-21T16:06:07-04:00 — Generated scraping v2 remains declarative and escalates evidence
+
+Generated scraping will persist only Zod-validated version-2 plans and execute them through shared
+DOM or API runtimes; AI output is data and is never evaluated as code. Capture is a separate phase
+that escalates from static HTML to rendered DOM and then JSON network evidence under absolute
+deadlines. The generation service owns an explicit four-attempt state machine, and exhaustion
+always records a diagnostics bundle and `manual-review` health rather than silently ending broken.
+Existing version-1 selector configs remain readable through a deterministic wrapper migration.
+
 ## 2026-07-20T19:09:35-04:00 — Known ATS overrides are explicit and fetch-free
 
 `known_ats.yaml` is optional, schema-validated configuration keyed case-insensitively by the same
