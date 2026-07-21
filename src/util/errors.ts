@@ -26,6 +26,9 @@ export class RobotsDisallowedError extends AppError {}
 /** Indicates that a generated scraper needs a browser-rendered execution strategy. */
 export class RequiresRenderError extends AppError {}
 
+/** Indicates that an evidence capture exceeded its absolute wall-clock deadline. */
+export class CaptureTimeoutError extends AppError {}
+
 /** Indicates a configuration read, parse, or validation failure. */
 export class ConfigError extends AppError {
   public constructor(
