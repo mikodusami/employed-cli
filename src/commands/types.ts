@@ -8,6 +8,7 @@ import type { Repositories } from '../db/index.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { UI } from '../ui/index.js';
 import type { HttpClient } from '../util/http.js';
+import type { Logger } from '../util/log.js';
 
 /** Dependencies shared by command orchestration code. */
 export interface CommandContext {
@@ -18,6 +19,7 @@ export interface CommandContext {
   detector: AtsDetector;
   http: HttpClient;
   ai: AiRunner | null;
+  log: Logger;
 }
 
 /** Registers one command and its options on the root program. */
