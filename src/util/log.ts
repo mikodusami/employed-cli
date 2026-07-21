@@ -150,7 +150,7 @@ export function createLogger(options: LoggerOptions): Logger {
     const logger = new JsonlLogger(state, 'logger');
     logger.event('warn', 'Structured log initialization failed.', { error: errorMessage(error) });
   }
-  return new JsonlLogger(state, 'app');
+  return new JsonlLogger(state, '');
 }
 
 /** Emits one stage to the live progress view and the durable event stream without duplicate text. */
