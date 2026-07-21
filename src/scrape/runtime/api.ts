@@ -2,7 +2,7 @@
 import type { CompanyRow } from '../../db/index.js';
 import { AdapterError } from '../../util/errors.js';
 import type { HttpClient } from '../../util/http.js';
-import type { ApiPlan } from '../plan.js';
+import { ScraperPlanSchema, type ApiPlan } from '../plan.js';
 import type { RawPosting, ScrapeSource } from '../types.js';
 import { getAtPath } from './dot-path.js';
 
@@ -22,7 +22,7 @@ export class ApiExecutor implements ScrapeSource {
 
   public constructor(
     private readonly http: HttpClient,
-    private readonly plan: ApiPlan,
+    private readonly suppliedPlan?: ApiPlan,
     private readonly operationDeadlineMs = 45_000,
   ) {}
 
@@ -31,21 +31,22 @@ export class ApiExecutor implements ScrapeSource {
   }
 
   public async execute(company: CompanyRow): Promise<ExecutionReport> {
+    const plan = this.suppliedPlan ?? parseStoredPlan(company);
     const postings: RawPosting[] = [];
     const errors: string[] = [];
     let requestCount = 0;
     let pageCount = 0;
-    const maxPages = Math.min(this.plan.pagination.maxPages, MAX_PAGES);
+    const maxPages = Math.min(plan.pagination.maxPages, MAX_PAGES);
 
     for (let page = 1; page <= maxPages; page += 1) {
-      const offset = (page - 1) * this.plan.pagination.pageSize;
-      const url = applyPlaceholders(this.plan.request.urlTemplate, page, offset);
+      const offset = (page - 1) * plan.pagination.pageSize;
+      const url = applyPlaceholders(plan.request.urlTemplate, page, offset);
       assertAllowedPlanUrl(company.careers_url, url);
-      const body = applyPlaceholders(this.plan.request.bodyTemplate, page, offset);
+      const body = applyPlaceholders(plan.request.bodyTemplate, page, offset);
       const response =
-        this.plan.request.method === 'GET'
-          ? await this.http.fetchText(url, this.requestOptions())
-          : await this.http.postJson(url, parseRequestBody(body), this.requestOptions());
+        plan.request.method === 'GET'
+          ? await this.http.fetchText(url, this.requestOptions(plan))
+          : await this.http.postJson(url, parseRequestBody(body), this.requestOptions(plan));
       requestCount += 1;
       pageCount += 1;
       if (response.status < 200 || response.status >= 300) {
@@ -60,14 +61,14 @@ export class ApiExecutor implements ScrapeSource {
         errors.push(`API page ${page} did not return valid JSON.`);
         break;
       }
-      const items = getAtPath(payload, this.plan.response.itemsPath);
+      const items = getAtPath(payload, plan.response.itemsPath);
       if (!Array.isArray(items)) {
-        errors.push(`itemsPath "${this.plan.response.itemsPath}" did not resolve to an array.`);
+        errors.push(`itemsPath "${plan.response.itemsPath}" did not resolve to an array.`);
         break;
       }
-      const mapped = items.map((item) => mapItem(item, this.plan)).filter(isPosting);
+      const mapped = items.map((item) => mapItem(item, plan)).filter(isPosting);
       postings.push(...mapped);
-      if (shouldStop(this.plan, payload, items.length, postings.length)) {
+      if (shouldStop(plan, payload, items.length, postings.length)) {
         break;
       }
     }
@@ -75,8 +76,28 @@ export class ApiExecutor implements ScrapeSource {
     return { postings, requestCount, pageCount, errors };
   }
 
-  private requestOptions() {
-    return { headers: this.plan.request.headers, timeoutMs: this.operationDeadlineMs };
+  private requestOptions(plan: ApiPlan) {
+    return { headers: plan.request.headers, timeoutMs: this.operationDeadlineMs };
+  }
+}
+
+function parseStoredPlan(company: CompanyRow): ApiPlan {
+  if (!company.scraper_config) {
+    throw new AdapterError(`Company ${company.name} has no generated scraper plan.`);
+  }
+  try {
+    const plan = ScraperPlanSchema.parse(JSON.parse(company.scraper_config));
+    if (plan.mode !== 'api') {
+      throw new AdapterError(`Company ${company.name} stores a DOM plan, not an API plan.`);
+    }
+    return plan;
+  } catch (error: unknown) {
+    if (error instanceof AdapterError) {
+      throw error;
+    }
+    throw new AdapterError(`Company ${company.name} has an invalid API scraper plan.`, {
+      cause: error,
+    });
   }
 }
 
