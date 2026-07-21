@@ -4,9 +4,11 @@ import { Option, type Command } from 'commander';
 import type { Tier } from '../db/index.js';
 import type { GenerateResult } from '../services/generate.js';
 import { ScrapeRuntime } from '../services/scrape-runtime.js';
+import type { ProgressHandle } from '../ui/index.js';
 import { ValidationError } from '../util/errors.js';
 import { relativeTime } from '../util/time.js';
 import type { CommandContext } from './types.js';
+import { bindProgress } from './progress.js';
 
 interface AddOptions {
   url: string;
@@ -42,18 +44,19 @@ async function addCompany(
   name: string,
   options: AddOptions,
 ): Promise<void> {
-  const spinner = context.ui.spinner(`Adding ${name} and checking its careers site`).start();
+  const progress = bindProgress(context, `Adding ${name}`);
   const runtime = createRuntime(context);
   try {
+    progress.handle.step('checking careers site');
     const result = await runtime.companies.add({ name, url: options.url, tier: options.tier });
     if (result.outcome === 'duplicate') {
-      spinner.succeed(`${result.company.name} is already registered; no changes made`);
+      progress.handle.succeed(`${result.company.name} is already registered; no changes made`);
       return;
     }
 
     const detection = result.detection;
     if (detection && detection.method !== 'unknown' && detection.slug) {
-      spinner.succeed(
+      progress.handle.succeed(
         `${result.company.name} — detected: ${detection.method} (slug: ${detection.slug})`,
       );
       if (!result.smoke?.ok) {
@@ -62,15 +65,16 @@ async function addCompany(
       return;
     }
     if (result.generation) {
-      renderGenerationResult(context, result.company.name, result.generation, spinner);
+      renderGenerationResult(context, result.company.name, result.generation, progress.handle);
       return;
     }
     const detail = detection?.detail ?? 'no detail';
-    spinner.succeed(`${result.company.name} — detected: unknown (${detail})`);
+    progress.handle.succeed(`${result.company.name} — detected: unknown (${detail})`);
   } catch (error: unknown) {
-    spinner.fail(`Could not add ${name}`);
+    progress.handle.fail(`Could not add ${name}`);
     throw error;
   } finally {
+    progress.release();
     await runtime.close();
   }
 }
@@ -80,17 +84,16 @@ async function generateCompany(context: CommandContext, name: string): Promise<v
   if (!company) {
     throw new ValidationError(`Company ${name} is not registered.`);
   }
-  const spinner = context.ui
-    .spinner(`Generating and validating a scraper for ${company.name}`)
-    .start();
+  const progress = bindProgress(context, `Generating scraper for ${company.name}`);
   const runtime = createRuntime(context);
   try {
     const result = await runtime.generator.generateFor(company);
-    renderGenerationResult(context, company.name, result, spinner);
+    renderGenerationResult(context, company.name, result, progress.handle);
   } catch (error: unknown) {
-    spinner.fail(`Could not generate a scraper for ${company.name}`);
+    progress.handle.fail(`Could not generate a scraper for ${company.name}`);
     throw error;
   } finally {
+    progress.release();
     await runtime.close();
   }
 }
@@ -99,7 +102,7 @@ function renderGenerationResult(
   context: CommandContext,
   companyName: string,
   result: GenerateResult,
-  spinner: ReturnType<CommandContext['ui']['spinner']>,
+  spinner: ProgressHandle,
 ): void {
   if (result.status === 'generated') {
     spinner.succeed(
@@ -149,5 +152,6 @@ function createRuntime(context: CommandContext): ScrapeRuntime {
     ai: context.ai,
     config: context.config.loadApp(),
     keywords: context.config.loadKeywords(),
+    report: context.stages.report,
   });
 }
