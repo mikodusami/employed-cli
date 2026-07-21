@@ -375,7 +375,12 @@ class ConfigAi implements AiRunner {
   public constructor(private readonly value: ScraperConfig) {}
 
   public async runJson<Result>(task: AiTask<Result>): Promise<Result> {
-    return task.schema.parse(this.value);
+    return task.schema.parse({
+      ...this.value,
+      mode: 'dom',
+      navigate: [],
+      planVersion: 2,
+    });
   }
 }
 
