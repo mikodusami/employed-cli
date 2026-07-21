@@ -235,6 +235,7 @@ test('the heal budget is shared across companies within one run, not per company
     config,
     keywords: emptyKeywords(),
     reportsDirectory,
+    browsers: null,
   });
 
   const summary = await service.execute();
