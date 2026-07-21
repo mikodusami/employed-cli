@@ -145,6 +145,7 @@ async function run(): Promise<void> {
       ui.banner();
     }
     program.outputHelp();
+    printFullLogPath(logger.filePath);
     return;
   }
 
@@ -156,9 +157,13 @@ async function run(): Promise<void> {
     throw error;
   } finally {
     database?.close();
-    if (logger.filePath) {
-      ui.info(`full log: ${logger.filePath}`);
-    }
+    printFullLogPath(logger.filePath);
+  }
+}
+
+function printFullLogPath(filePath: string | null): void {
+  if (filePath) {
+    createUI(false).info(`full log: ${filePath}`);
   }
 }
 
