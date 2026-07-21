@@ -114,9 +114,7 @@ function renderGenerationResult(
     return;
   }
   spinner.fail(
-    result.pendingPlaywright
-      ? `${companyName} requires browser rendering; queued for the Playwright unit`
-      : `${companyName} scraper failed validation`,
+    `${companyName} scraper needs manual review; diagnostics: ${result.diagnosticsPath}`,
   );
   for (const reason of result.reasons) {
     context.ui.warn(reason);
