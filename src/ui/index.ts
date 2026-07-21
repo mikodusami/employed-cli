@@ -293,9 +293,10 @@ function isBand(value: string | undefined): value is Band {
 }
 
 /** Selects animated output only when explicitly allowed and safe for the terminal. */
-export function createUI(isAnimationEnabled = true): UI {
+export function createUI(isAnimationEnabled = true, quiet = false): UI {
   const isAutomatedEnvironment = Boolean(process.env.CI) || !process.stdout.isTTY;
-  return isAnimationEnabled && !isAutomatedEnvironment ? new AnimatedUI() : new PlainUI();
+  const ui = isAnimationEnabled && !isAutomatedEnvironment ? new AnimatedUI() : new PlainUI();
+  return quiet ? new QuietUI(ui) : ui;
 }
 
 class AnimatedProgress implements ProgressHandle {
@@ -352,3 +353,44 @@ class PlainProgress implements ProgressHandle {
     }
   }
 }
+
+class QuietUI implements UI {
+  public constructor(private readonly delegate: UI) {}
+
+  public spinner(): Spinner {
+    return SILENT_SPINNER;
+  }
+
+  public progress(): ProgressHandle {
+    return SILENT_PROGRESS;
+  }
+
+  public success(): void {}
+  public info(): void {}
+  public heading(): void {}
+  public output(): void {}
+  public banner(): void {}
+  public table(): void {}
+
+  public error(message: string): void {
+    this.delegate.error(message);
+  }
+
+  public warn(message: string): void {
+    this.delegate.warn(message);
+  }
+}
+
+const SILENT_SPINNER: Spinner = {
+  start: () => SILENT_SPINNER,
+  succeed: () => SILENT_SPINNER,
+  fail: () => SILENT_SPINNER,
+  update: () => SILENT_SPINNER,
+};
+
+const SILENT_PROGRESS: ProgressHandle = {
+  step: () => undefined,
+  substep: () => undefined,
+  succeed: () => undefined,
+  fail: () => undefined,
+};
