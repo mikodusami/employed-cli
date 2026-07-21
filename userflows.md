@@ -1589,3 +1589,50 @@ not reuse an earlier flow's state. Several flows scrape the real, public Highspo
    `scrape-service.test.ts`, `rescore.test.ts`, and `db.test.ts` all pass — `buildKeywordRegex` and
    `applyHardFilters` are exercised with no DB/IO in their own test files, matching the acceptance
    criteria.
+
+# Remediation — scraper runtime v2
+
+Run `npm run build` first. Every flow uses a new initialized temporary workspace and deletes it.
+
+### Flow 1: Verify capture deadlines and network evidence bounds
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test test/capture-analyze.test.ts`.
+4. Confirm the hanging static fixture terminates quickly, the repeated link pattern is summarized,
+   and JSON XHR evidence is capped at 30 entries with 2 KiB requests and 4 KiB responses.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Verify safe DOM and hidden-API execution
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test test/api-runtime.test.ts test/generated-source.test.ts`.
+4. Confirm offset/page pagination terminates, unrelated API hosts are rejected before HTTP, relative
+   URLs resolve, and Playwright performs declarative navigation before extraction.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Exercise the four-attempt planner and adaptive escalation
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test test/generate-service.test.ts`.
+4. Confirm first-attempt DOM success, retry-feedback success, unchanged-evidence cache reuse, sparse
+   HTML escalation, attempt-three API success, and four-attempt exhaustion all pass.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Inspect manual-review evidence and doctor guidance
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run the diagnostics exhaustion test from Flow 3, then inspect its reported temporary bundle; in
+   a real failed generation, inspect `$EMPLOYED_DIR/debug/<company>-<timestamp>/`.
+4. Confirm the bundle contains `captured.html`, `network.txt`, `attempts.json`, and
+   `navigation.json`, and that the company health is `manual-review`.
+5. Run `employed doctor --no-animation` and confirm the fleet section recommends inspecting the
+   debug bundle, retrying generation, or adding a known ATS override.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
