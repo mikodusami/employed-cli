@@ -28,6 +28,7 @@ import type { CommandContext } from './commands/types.js';
 import { LOGS_DIR, VERSION } from './constants.js';
 import { createDb, Repositories } from './db/index.js';
 import { SignatureDetector, type AtsDetector } from './scrape/detect.js';
+import { StageBus } from './scrape/progress.js';
 import { createUI } from './ui/index.js';
 import { AppError } from './util/errors.js';
 import { buildHttpClient, type HttpClient, RobotsGate } from './util/http.js';
@@ -38,6 +39,7 @@ async function run(): Promise<void> {
   const isAnimationEnabled = !process.argv.includes('--no-animation');
   const ui = createUI(isAnimationEnabled);
   const config = new ConfigService();
+  const stages = new StageBus();
   const trace = process.argv.includes('--trace');
   const logger = createLogger({
     logsDirectory: LOGS_DIR,
@@ -73,6 +75,7 @@ async function run(): Promise<void> {
       new RobotsGate(getHttp()),
       config.loadApp().run.respectRobots,
       config.loadKnownAts(),
+      stages.report,
     ));
   const getAi = (): AiRunner | null => {
     if (!isAiInitialized) {
@@ -89,6 +92,7 @@ async function run(): Promise<void> {
     ui,
     config,
     log: logger,
+    stages,
     get db() {
       return getDatabase();
     },
