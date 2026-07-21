@@ -1,6 +1,6 @@
 /** Bounded ATS detection with override-first, multi-hop static reconnaissance. */
 import type { ScrapeMethod } from '../db/index.js';
-import { RobotsDisallowedError } from '../util/errors.js';
+import { CaptureTimeoutError, RobotsDisallowedError } from '../util/errors.js';
 import type { FetchResult, HttpClient, RobotsGate } from '../util/http.js';
 import { findJobBrowseLinks, findJobDetailLinks } from './crawl.js';
 import type { KnownAtsFile } from './known-ats.js';
@@ -41,6 +41,7 @@ export class SignatureDetector implements AtsDetector {
     private readonly respectRobots = false,
     knownAts: KnownAtsFile = {},
     private readonly report: StageReporter = NO_STAGE_REPORTER,
+    private readonly deadlineMs = 45_000,
   ) {
     this.knownAts = Object.fromEntries(
       Object.entries(knownAts).map(([name, override]) => [name.toLowerCase(), override]),
@@ -70,7 +71,7 @@ export class SignatureDetector implements AtsDetector {
         request: requestCount,
         depth: path.length,
       });
-      const result = await this.http.fetchText(url);
+      const result = await withDeadline(this.http.fetchText(url), this.deadlineMs, url);
       if (!isSuccessful(result)) {
         lastFailure = `fetch failed: HTTP ${result.status}`;
         return null;
@@ -199,4 +200,25 @@ function unknownResult(detail: string): DetectionResult {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function withDeadline<Result>(
+  operation: Promise<Result>,
+  deadlineMs: number,
+  url: string,
+): Promise<Result> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new CaptureTimeoutError(`Detection fetch timed out after ${deadlineMs}ms: ${url}`)),
+      deadlineMs,
+    );
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
