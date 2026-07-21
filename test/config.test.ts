@@ -54,6 +54,8 @@ test('schemas populate every top-level configuration section from an empty mappi
     title: {},
     description: {},
     negative: {},
+    hardExclude: { title: [], description: [] },
+    locations: { allow: [], block: [], allowUnknownLocation: true },
   });
 });
 

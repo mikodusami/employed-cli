@@ -30,6 +30,8 @@ test('scrapeCompany inserts once then refreshes the same posting on rerun', asyn
         title: { 'account executive': 5 },
         description: { ai: 2 },
         negative: { apac: 1 },
+        hardExclude: { title: [], description: [] },
+        locations: { allow: [], block: [], allowUnknownLocation: true },
       },
     },
   );
@@ -95,6 +97,105 @@ test('smokeTest marks a yielding adapter healthy and records its count', async (
   assert.equal(updated?.health, 'ok');
   assert.equal(updated?.last_yield, 1);
   assert.equal(updated?.consecutive_failures, 0);
+  database.close();
+});
+
+test('a hard-excluded posting is stored dismissed with a reason, not surfaced as new', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const company = createCompany(repositories, 'greenhouse', 'anthropic');
+  const service = new ScrapeService(
+    repositories,
+    new FixtureHttpClient(readFixture('greenhouse.json')),
+    {
+      keywords: {
+        title: {},
+        description: {},
+        negative: {},
+        hardExclude: { title: ['account executive'], description: [] },
+        locations: { allow: [], block: [], allowUnknownLocation: true },
+      },
+    },
+  );
+
+  const result = await service.scrapeCompany(company);
+
+  assert.equal(result.status, 'completed');
+  assert.equal(result.seen, 1, 'excluded postings still count toward seen');
+  assert.equal(result.new, 0, 'excluded postings never surface as new');
+  assert.deepEqual(result.newJobs, []);
+  assert.equal(result.autoFiltered, 1);
+  assert.equal(result.autoFilteredByKeyword, 1);
+  assert.equal(result.autoFilteredByLocation, 0);
+
+  const stored = repositories.jobs.findNewSince('2000-01-01')[0];
+  assert.equal(stored?.status, 'dismissed');
+  assert.match(stored?.filter_reason ?? '', /hard-exclude title: account executive/);
+  database.close();
+});
+
+test('a location-blocked posting counts toward the location bucket', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const company = createCompany(repositories, 'greenhouse', 'anthropic');
+  const service = new ScrapeService(
+    repositories,
+    new FixtureHttpClient(readFixture('greenhouse.json')),
+    {
+      keywords: {
+        title: {},
+        description: {},
+        negative: {},
+        hardExclude: { title: [], description: [] },
+        locations: { allow: [], block: ['australia'], allowUnknownLocation: true },
+      },
+    },
+  );
+
+  const result = await service.scrapeCompany(company);
+
+  assert.equal(result.autoFiltered, 1);
+  assert.equal(result.autoFilteredByKeyword, 0);
+  assert.equal(result.autoFilteredByLocation, 1);
+  const stored = repositories.jobs.findNewSince('2000-01-01')[0];
+  assert.match(stored?.filter_reason ?? '', /location blocked: australia/);
+  database.close();
+});
+
+test('a dismissed job is never silently revived or re-labeled by a later scrape', async () => {
+  const database = createDb(':memory:');
+  const repositories = new Repositories(database);
+  const company = createCompany(repositories, 'greenhouse', 'anthropic');
+  const excludingKeywords = {
+    title: {},
+    description: {},
+    negative: {},
+    hardExclude: { title: ['account executive'], description: [] },
+    locations: { allow: [], block: [], allowUnknownLocation: true },
+  };
+  const permissiveKeywords = {
+    title: {},
+    description: {},
+    negative: {},
+    hardExclude: { title: [], description: [] },
+    locations: { allow: [], block: [], allowUnknownLocation: true },
+  };
+
+  const http = new FixtureHttpClient(readFixture('greenhouse.json'));
+  await new ScrapeService(repositories, http, { keywords: excludingKeywords }).scrapeCompany(
+    company,
+  );
+  const filtered = repositories.jobs.findNewSince('2000-01-01')[0];
+  assert.equal(filtered?.status, 'dismissed');
+
+  // Simulate the user removing the hard-exclude term and re-scraping: the already-filtered job
+  // must stay exactly as it was — only `restore` reopens it.
+  await new ScrapeService(repositories, http, { keywords: permissiveKeywords }).scrapeCompany(
+    company,
+  );
+  const stillFiltered = repositories.jobs.findNewSince('2000-01-01')[0];
+  assert.equal(stillFiltered?.status, 'dismissed');
+  assert.match(stillFiltered?.filter_reason ?? '', /hard-exclude title: account executive/);
   database.close();
 });
 

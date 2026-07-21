@@ -116,7 +116,13 @@ function seedCoreRows(repositories: Repositories): void {
 function importerFor(repositories: Repositories, keywordsPath = keywordFile()): ImportHqService {
   return new ImportHqService({
     repositories,
-    currentKeywords: { title: {}, description: {}, negative: {} },
+    currentKeywords: {
+      title: {},
+      description: {},
+      negative: {},
+      hardExclude: { title: [], description: [] },
+      locations: { allow: [], block: [], allowUnknownLocation: true },
+    },
     keywordsPath,
     now: () => new Date('2026-07-20T12:00:00Z'),
   });

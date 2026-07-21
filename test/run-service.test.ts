@@ -407,7 +407,13 @@ function baseConfig(): AppConfig {
 }
 
 function emptyKeywords(): KeywordsFile {
-  return { title: {}, description: {}, negative: {} };
+  return {
+    title: {},
+    description: {},
+    negative: {},
+    hardExclude: { title: [], description: [] },
+    locations: { allow: [], block: [], allowUnknownLocation: true },
+  };
 }
 
 function scraperConfig(listSelector: string): ScraperConfig {

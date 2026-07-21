@@ -1,9 +1,14 @@
-/** Exhaustive pure tests for §7.6 weighted scoring and bands. */
+/** Exhaustive pure tests for §7.6 weighted, word-boundary-aware scoring and bands. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { KeywordsFile } from '../src/config/schema.js';
-import { scoreJob } from '../src/score/engine.js';
+import { buildKeywordRegex, scoreJob } from '../src/score/engine.js';
+
+const EMPTY_FILTERS = {
+  hardExclude: { title: [], description: [] },
+  locations: { allow: [], block: [], allowUnknownLocation: true },
+} as const;
 
 const seed: KeywordsFile = {
   title: {
@@ -23,6 +28,7 @@ const seed: KeywordsFile = {
     senior: 8,
     staff: 8,
   },
+  ...EMPTY_FILTERS,
 };
 
 test('validated seed-profile example lands in band A with exact math', () => {
@@ -101,6 +107,7 @@ test('matched keywords contain each firing signal exactly once across lists', ()
     title: { product: 2, engineer: 1 },
     description: { product: 3 },
     negative: { product: 4, unpaid: 10 },
+    ...EMPTY_FILTERS,
   };
   const result = scoreJob(
     { title: 'Product Engineer', description: 'Product role, not unpaid.' },
@@ -111,9 +118,87 @@ test('matched keywords contain each firing signal exactly once across lists', ()
   assert.equal(new Set(result.matchedKeywords).size, result.matchedKeywords.length);
 });
 
+test('buildKeywordRegex is word-boundary-aware: short keywords skip longer words', () => {
+  assert.equal(buildKeywordRegex('ai').test('maintaining a service'), false);
+  assert.equal(buildKeywordRegex('ai').test('domain expertise'), false);
+  assert.equal(buildKeywordRegex('ai').test('certain skills'), false);
+  assert.equal(buildKeywordRegex('ai').test('AI Engineer'), true);
+
+  assert.equal(buildKeywordRegex('api').test('capital markets'), false);
+  assert.equal(buildKeywordRegex('api').test('rapid growth'), false);
+  assert.equal(buildKeywordRegex('api').test('build a REST API'), true);
+
+  assert.equal(buildKeywordRegex('sql').test('nosql database'), false);
+  assert.equal(buildKeywordRegex('sql').test('write SQL queries'), true);
+
+  assert.equal(buildKeywordRegex('staff').test('staffing agency'), false);
+  assert.equal(buildKeywordRegex('staff').test('Staff Engineer'), true);
+});
+
+test('buildKeywordRegex matches a keyword with a non-word character as a whole phrase', () => {
+  assert.equal(buildKeywordRegex('ci/cd').test('we value ci/cd practices'), true);
+  assert.equal(buildKeywordRegex('ci/cd').test('CI/CD pipeline'), true);
+  assert.equal(buildKeywordRegex('ci/cd').test('ci/cdx'), false);
+  assert.equal(buildKeywordRegex('ci/cd').test('xci/cd'), false);
+});
+
+test('scoreJob counts word-boundary hits only: ai/api/sql substrings never inflate score', () => {
+  const keywords: KeywordsFile = {
+    title: {},
+    description: { ai: 2, api: 2, sql: 2 },
+    negative: {},
+    ...EMPTY_FILTERS,
+  };
+  const result = scoreJob(
+    {
+      title: 'Backend Engineer',
+      description: 'Maintaining a domain-driven, certain, capital, rapid, nosql pipeline.',
+    },
+    keywords,
+  );
+
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matchedKeywords, []);
+});
+
+test('an indirect early-career phrase in the description fires and lifts the score', () => {
+  const keywords: KeywordsFile = {
+    title: {},
+    description: { 'equivalent practical experience': 3 },
+    negative: {},
+    ...EMPTY_FILTERS,
+  };
+  const result = scoreJob(
+    {
+      title: 'Software Engineer',
+      description: 'A degree is preferred, or equivalent practical experience.',
+    },
+    keywords,
+  );
+
+  assert.equal(result.score, 3);
+  assert.deepEqual(result.matchedKeywords, ['equivalent practical experience']);
+});
+
+test('a title with no seniority language scores from description signals alone', () => {
+  const keywords: KeywordsFile = {
+    title: {},
+    description: { python: 3, 'no experience required': 3 },
+    negative: { senior: 8 },
+    ...EMPTY_FILTERS,
+  };
+  const result = scoreJob(
+    { title: 'Engineer', description: 'Python role. No experience required.' },
+    keywords,
+  );
+
+  assert.equal(result.score, 6);
+  assert.deepEqual(result.matchedKeywords, ['python', 'no experience required']);
+});
+
 function scoreAt(score: number) {
   return scoreJob(
     { title: 'Role', description: 'boundary' },
-    { title: {}, description: { boundary: score }, negative: {} },
+    { title: {}, description: { boundary: score }, negative: {}, ...EMPTY_FILTERS },
   );
 }
