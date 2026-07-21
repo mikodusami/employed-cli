@@ -671,6 +671,22 @@ deadlines. The generation service owns an explicit four-attempt state machine, a
 always records a diagnostics bundle and `manual-review` health rather than silently ending broken.
 Existing version-1 selector configs remain readable through a deterministic wrapper migration.
 
+## 2026-07-21T16:31:18-04:00 — Runtime v2 safety is enforced below AI output
+
+API execution resolves data through non-evaluating dot paths, permits only `accept` and
+`content-type` headers, clamps pagination to 25 pages, and rejects targets outside the careers
+site's registrable domain unless they are recognized ATS hosts. Browser work owns its page lifetime
+and closes the page when its absolute deadline fires. Sparse static evidence skips directly to
+rendered/network planning when a browser exists; constrained runtimes without one degrade to static
+evidence instead of hanging or crashing.
+
+## 2026-07-21T16:31:18-04:00 — Failed generation is an inspectable operating state
+
+Four exhausted plan attempts set `manual-review` and atomically leave the prior scraper method and
+config untouched. A timestamped debug bundle stores captured HTML, filtered network evidence,
+navigation history, and every plan/error pair. Doctor treats this state as a problem and routes the
+operator to that evidence, while generated-scraper healing starts at evidence-rich attempt three.
+
 ## 2026-07-20T19:09:35-04:00 — Known ATS overrides are explicit and fetch-free
 
 `known_ats.yaml` is optional, schema-validated configuration keyed case-insensitively by the same
