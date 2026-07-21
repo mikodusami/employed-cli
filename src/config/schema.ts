@@ -139,6 +139,11 @@ export const AppConfigSchema = z.object({
       maxAttempts: z.number().int().min(1).max(8).default(4),
     })
     .default({ maxAttempts: 4 }),
+  logging: z
+    .object({
+      retentionDays: z.number().int().min(1).max(365).default(14),
+    })
+    .default({ retentionDays: 14 }),
   stats: z
     .object({
       /** Applications quiet at least this many days (and not offer/rejected) get a nudge. */
