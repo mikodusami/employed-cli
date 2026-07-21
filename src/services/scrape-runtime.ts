@@ -5,6 +5,7 @@ import type { Repositories } from '../db/index.js';
 import { BrowserPool } from '../scrape/browser.js';
 import type { AtsDetector } from '../scrape/detect.js';
 import type { HttpClient } from '../util/http.js';
+import { NO_STAGE_REPORTER, type StageReporter } from '../scrape/progress.js';
 import { CompanyService } from './company.js';
 import { GenerateService } from './generate.js';
 import { HealBudget, HealService } from './heal.js';
@@ -19,6 +20,7 @@ export interface ScrapeRuntimeDependencies {
   keywords: KeywordsFile;
   /** Undefined builds the normal pool; null explicitly disables browser work for constrained runs. */
   browsers?: BrowserPool | null;
+  report?: StageReporter;
 }
 
 /** Owns capabilities whose lifetime must match one command or scheduled run. */
@@ -29,6 +31,7 @@ export class ScrapeRuntime {
   public readonly companies: CompanyService;
 
   public constructor(dependencies: ScrapeRuntimeDependencies) {
+    const report = dependencies.report ?? NO_STAGE_REPORTER;
     this.browsers =
       dependencies.browsers === undefined
         ? new BrowserPool(dependencies.config.run.playwright.navTimeoutMs)
@@ -41,11 +44,13 @@ export class ScrapeRuntime {
       {
         deadlines: dependencies.config.capture,
         maxAttempts: dependencies.config.generate.maxAttempts,
+        report,
       },
     );
     const options: ScrapeServiceOptions = {
       browsers: this.browsers,
       keywords: dependencies.keywords,
+      report,
     };
     this.scraper = new ScrapeService(dependencies.repositories, dependencies.http, options);
     options.healing = {
