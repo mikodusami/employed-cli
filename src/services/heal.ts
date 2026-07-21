@@ -105,6 +105,7 @@ export class HealService {
 
     const generated = await this.generator.generateFor(
       this.repositories.companies.findByName(company.name) ?? company,
+      { evidenceFirst: company.scrape_method.startsWith('generated-') },
     );
     if (generated.status === 'generated') {
       this.repositories.companies.updateHealth(company.id, 'ok');
@@ -124,7 +125,7 @@ export class HealService {
         note: `${company.name} regeneration skipped: ${generated.reason}`,
       };
     }
-    this.repositories.companies.updateHealth(company.id, 'broken');
+    this.repositories.companies.updateHealth(company.id, 'manual-review');
     return {
       healed: false,
       deferred: false,
