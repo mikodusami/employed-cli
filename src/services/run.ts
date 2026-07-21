@@ -45,6 +45,9 @@ export interface RunSummary {
   failures: readonly RunFailure[];
   reportPath: string;
   email: { attempted: boolean; sent: boolean; error: string | null };
+  autoFiltered: number;
+  autoFilteredByKeyword: number;
+  autoFilteredByLocation: number;
 }
 
 /** `--tier` bypasses the schedule entirely; omitted, the tier scheduler picks the run's set. */
@@ -82,6 +85,9 @@ interface RunAccumulator {
   jobsClosed: number;
   healed: number;
   failures: RunFailure[];
+  autoFiltered: number;
+  autoFilteredByKeyword: number;
+  autoFilteredByLocation: number;
 }
 
 /** The single idempotent entry point the scheduler fires every morning. */
@@ -113,6 +119,9 @@ export class RunService {
       jobsClosed: 0,
       healed: 0,
       failures: [],
+      autoFiltered: 0,
+      autoFilteredByKeyword: 0,
+      autoFilteredByLocation: 0,
     };
     let reportPath: string | null = null;
     let finishedAt = '';
@@ -196,6 +205,9 @@ export class RunService {
       failures: accumulator.failures,
       reportPath,
       email,
+      autoFiltered: accumulator.autoFiltered,
+      autoFilteredByKeyword: accumulator.autoFilteredByKeyword,
+      autoFilteredByLocation: accumulator.autoFilteredByLocation,
     };
   }
 
@@ -213,6 +225,9 @@ export class RunService {
       if (result.status === 'completed') {
         accumulator.jobsSeen += result.seen;
         accumulator.jobsNew += result.new;
+        accumulator.autoFiltered += result.autoFiltered;
+        accumulator.autoFilteredByKeyword += result.autoFilteredByKeyword;
+        accumulator.autoFilteredByLocation += result.autoFilteredByLocation;
         if (previousSuccessAt) {
           accumulator.jobsClosed += repositories.jobs.markClosedIfUnseen(
             company.id,

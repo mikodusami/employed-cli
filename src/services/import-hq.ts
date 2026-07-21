@@ -73,6 +73,8 @@ const JobRowSchema = z.object({
   description: z.string().nullable(), score: z.number().int().nullable(),
   band: z.enum(['A', 'B', 'C', 'D']).nullable(), matched_kw: z.string().nullable(),
   status: z.enum(['open', 'closed', 'dismissed']), first_seen: z.string(), last_seen: z.string(),
+  // Absent on snapshots exported before the hard-exclude filter existed; defaults to unfiltered.
+  filter_reason: z.string().nullable().default(null),
 });
 const ApplicationRowSchema = z.object({
   id: z.number().int(), job_id: z.number().int().nullable(), company_name: z.string(),
@@ -318,7 +320,9 @@ function mergeKeywords(
   current: KeywordsFile,
   scoring: HqBackup['scoring'],
 ): { value: KeywordsFile; added: number } {
-  const incoming: KeywordsFile = {
+  // HQ backups only ever carry scoring weights, never hardExclude/locations — those are
+  // preserved from `current` untouched below, not merged from `incoming`.
+  const incoming: Record<'title' | 'description' | 'negative', Record<string, number>> = {
     title: scoring.title ?? {},
     description: scoring.description ?? scoring.desc ?? {},
     negative: scoring.negative ?? {},
@@ -328,6 +332,8 @@ function mergeKeywords(
     title: { ...current.title },
     description: { ...current.description },
     negative: { ...current.negative },
+    hardExclude: current.hardExclude,
+    locations: current.locations,
   };
   for (const group of ['title', 'description', 'negative'] as const) {
     for (const [keyword, weight] of Object.entries(incoming[group])) {

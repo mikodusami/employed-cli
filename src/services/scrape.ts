@@ -2,6 +2,7 @@
 import type { KeywordsFile } from '../config/schema.js';
 import type { CompanyRow, JobRow, Repositories, ScrapeMethod } from '../db/index.js';
 import { scoreJob } from '../score/engine.js';
+import { applyHardFilters } from '../score/filter.js';
 import { getSource } from '../scrape/adapters/index.js';
 import type { BrowserPool } from '../scrape/browser.js';
 import { toJobInput } from '../scrape/normalize.js';
@@ -18,6 +19,10 @@ export interface CompanyScrapeResult {
   newJobs: readonly JobRow[];
   reason: string | null;
   heal: HealResult | null;
+  /** Postings this scrape excluded via the hard-exclude/location gate; still counted in `seen`. */
+  autoFiltered: number;
+  autoFilteredByKeyword: number;
+  autoFilteredByLocation: number;
 }
 
 /** Structured result of checking whether an adapter yields usable postings. */
@@ -79,21 +84,38 @@ export class ScrapeService {
         );
       }
       const today = new Date().toISOString();
+      const keywords = this.options.keywords ?? EMPTY_KEYWORDS;
+      let autoFilteredByKeyword = 0;
+      let autoFilteredByLocation = 0;
       const newJobs = this.repositories.withTransaction(() => {
         const insertedJobs: JobRow[] = [];
         for (const posting of postings) {
           const input = toJobInput(posting, company.id, today);
           const scored = scoreJob(
             { title: input.title, description: input.description },
-            this.options.keywords ?? EMPTY_KEYWORDS,
+            keywords,
           );
+          const verdict = applyHardFilters(
+            { title: input.title, description: input.description, location: input.location },
+            keywords.hardExclude,
+            keywords.locations,
+          );
+          if (verdict.excluded) {
+            if (verdict.reason?.startsWith('location')) {
+              autoFilteredByLocation += 1;
+            } else {
+              autoFilteredByKeyword += 1;
+            }
+          }
           const upsert = this.repositories.jobs.upsert({
             ...input,
             score: scored.score,
             band: scored.band,
             matched_kw: JSON.stringify(scored.matchedKeywords),
+            status: verdict.excluded ? 'dismissed' : 'open',
+            filter_reason: verdict.reason,
           });
-          if (upsert.isNew) {
+          if (upsert.isNew && !verdict.excluded) {
             insertedJobs.push(upsert.job);
           }
         }
@@ -108,6 +130,9 @@ export class ScrapeService {
         newJobs,
         reason: null,
         heal: priorHeal,
+        autoFiltered: autoFilteredByKeyword + autoFilteredByLocation,
+        autoFilteredByKeyword,
+        autoFilteredByLocation,
       };
     } catch (error: unknown) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -181,6 +206,8 @@ const EMPTY_KEYWORDS: KeywordsFile = {
   title: {},
   description: {},
   negative: {},
+  hardExclude: { title: [], description: [] },
+  locations: { allow: [], block: [], allowUnknownLocation: true },
 };
 
 function isValidPosting(posting: RawPosting): boolean {
@@ -201,7 +228,18 @@ function result(
   reason: string,
   heal: HealResult | null,
 ): CompanyScrapeResult {
-  return { status, method, seen: 0, new: 0, newJobs: [], reason, heal };
+  return {
+    status,
+    method,
+    seen: 0,
+    new: 0,
+    newJobs: [],
+    reason,
+    heal,
+    autoFiltered: 0,
+    autoFilteredByKeyword: 0,
+    autoFilteredByLocation: 0,
+  };
 }
 
 function isHealEligible(company: CompanyRow): boolean {
@@ -215,4 +253,25 @@ function smokeResult(
   reason: string | null,
 ): SmokeResult {
   return { ok, method, count, reason };
+}
+
+/** Auto-filter counts shared by both `CompanyScrapeResult` and the aggregated `RunSummary`. */
+export interface AutoFilterCounts {
+  autoFiltered: number;
+  autoFilteredByKeyword: number;
+  autoFilteredByLocation: number;
+}
+
+/**
+ * Renders "N (X keyword, Y location)" for terminal digests — suppression from view must never
+ * mean suppression from awareness, so `scan` and `run` both surface this via the same formatter.
+ */
+export function describeAutoFiltered(counts: AutoFilterCounts): string {
+  if (counts.autoFiltered === 0) {
+    return '0';
+  }
+  return (
+    `${counts.autoFiltered} (${counts.autoFilteredByKeyword} keyword, ` +
+    `${counts.autoFilteredByLocation} location)`
+  );
 }
