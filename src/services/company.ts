@@ -39,7 +39,7 @@ export interface ImportSummary {
 /** Progress reported after each company import attempt. */
 export interface ImportProgress {
   name: string;
-  outcome: 'created' | 'duplicate' | 'failed';
+  outcome: 'started' | 'created' | 'duplicate' | 'failed';
   reason?: string;
 }
 
@@ -102,6 +102,7 @@ export class CompanyService {
     const failures: ImportFailure[] = [];
 
     for (const company of companiesFile.companies) {
+      onProgress?.({ name: company.name, outcome: 'started' });
       try {
         const result = await this.add({
           name: company.name,
