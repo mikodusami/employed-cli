@@ -93,7 +93,7 @@ function renderFleet(context: CommandContext, result: DoctorResult): void {
   const counts = result.fleet.counts;
   context.ui.table(
     ['Health', 'Count'],
-    (['ok', 'degraded', 'broken', 'untested'] as const).map((health) => [
+    (['ok', 'degraded', 'broken', 'manual-review', 'untested'] as const).map((health) => [
       health,
       String(counts[health]),
     ]),
