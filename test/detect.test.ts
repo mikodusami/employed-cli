@@ -153,6 +153,32 @@ test('pathological crawl never exceeds the hard request cap', async () => {
   assert.match(result.detail ?? '', /5 requests/);
 });
 
+test('a hanging detection fetch hits its deadline and reports the failed stage', async () => {
+  const events: Array<{ message: string; level?: string }> = [];
+  const http: HttpClient = {
+    fetchText: async () => new Promise<FetchResult>(() => undefined),
+    postJson: async () => new Promise<FetchResult>(() => undefined),
+  };
+  const detector = new SignatureDetector(
+    http,
+    undefined,
+    false,
+    {},
+    (_scope, message, _data, level) => events.push({ message, level }),
+    20,
+  );
+
+  const result = await detector.detect(company('Hanging', 'https://example.com/careers'));
+
+  assert.equal(result.method, 'unknown');
+  assert.match(result.detail ?? '', /timed out after 20ms/);
+  assert.deepEqual(events.map(({ message }) => message), [
+    'fetching crawl page',
+    'careers-page detection failed',
+  ]);
+  assert.equal(events[1]?.level, 'error');
+});
+
 function company(name: string, careersUrl: string) {
   return { name, careers_url: careersUrl };
 }
