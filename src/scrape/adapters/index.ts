@@ -3,6 +3,7 @@ import type { ScrapeMethod } from '../../db/index.js';
 import type { HttpClient } from '../../util/http.js';
 import type { BrowserPool } from '../browser.js';
 import { GeneratedSource, PlaywrightGeneratedSource } from '../generated.js';
+import { ApiExecutor } from '../runtime/api.js';
 import type { ScrapeSource } from '../types.js';
 import { AshbyAdapter } from './ashby.js';
 import { GreenhouseAdapter } from './greenhouse.js';
@@ -24,6 +25,7 @@ const adapterFactories: Partial<Record<ScrapeMethod, AdapterFactory>> = {
   'generated-static': ({ http }) => new GeneratedSource(http),
   'generated-playwright': ({ browsers }) =>
     browsers ? new PlaywrightGeneratedSource(browsers) : null,
+  'generated-api': ({ http }) => new ApiExecutor(http),
   lever: ({ http }) => new LeverAdapter(http),
   recruitee: ({ http }) => new RecruiteeAdapter(http),
   smartrecruiters: ({ http }) => new SmartRecruitersAdapter(http),
