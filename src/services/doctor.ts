@@ -10,6 +10,7 @@ import { NodeProcessRunner } from '../ai/process.js';
 import type { AiProvider } from '../ai/types.js';
 import type { AppConfig, ProviderName } from '../config/schema.js';
 import type { Health, Repositories } from '../db/index.js';
+import { ScraperConfigSchema } from '../scrape/config.js';
 import { ScraperPlanSchema } from '../scrape/plan.js';
 import { EmailService, type EmailStatus } from './email.js';
 import { ScheduleService, type ScheduleStatus } from './schedule.js';
@@ -363,7 +364,11 @@ function generatedConfidence(value: string | null): number | null {
   }
   try {
     const parsed = ScraperPlanSchema.safeParse(JSON.parse(value));
-    return parsed.success ? parsed.data.confidence : null;
+    if (parsed.success) {
+      return parsed.data.confidence;
+    }
+    const legacy = ScraperConfigSchema.safeParse(JSON.parse(value));
+    return legacy.success ? legacy.data.confidence : null;
   } catch {
     return null;
   }
