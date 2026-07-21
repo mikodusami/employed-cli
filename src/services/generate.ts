@@ -99,7 +99,7 @@ export class GenerateService {
     let finalReasons: readonly string[] = ['No plan attempt completed.'];
 
     while (attempt <= this.maxAttempts) {
-      const strategy = captureStrategy(attempt);
+      const strategy = captureStrategy(attempt, Boolean(this.browsers));
       if (!capture || capture.strategy !== strategy) {
         try {
           capture = await capturePage(
@@ -234,8 +234,8 @@ function persistSuccess(
   });
 }
 
-function captureStrategy(attempt: number): CaptureStrategy {
-  return attempt < 3 ? 'static' : 'playwright-network';
+function captureStrategy(attempt: number, browserAvailable: boolean): CaptureStrategy {
+  return attempt < 3 || !browserAvailable ? 'static' : 'playwright-network';
 }
 
 function countLikelyJobLinks(html: string): number {
