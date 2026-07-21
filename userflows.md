@@ -1636,3 +1636,67 @@ Run `npm run build` first. Every flow uses a new initialized temporary workspace
    debug bundle, retrying generation, or adding a known ATS override.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
+
+# Remediation — structured logging and live progress
+
+Build once with `npm run build`. Each flow below deliberately starts from and returns to a blank
+workspace; do not reuse the workspace or exported variable between flows.
+
+### Flow 1: Inspect the complete per-command JSONL record
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Copy the `full log:` path printed at the end, then run `sed -n '1,10p' <that-path>`.
+4. Confirm each line is an independent JSON object with `ts`, `level`, `scope`, and `msg`, and the
+   file contains the command-started and command-finished events.
+5. Run `employed doctor --no-animation` and confirm it creates and prints a different
+   `doctor-YYYY-MM-DD-HHmmss.log` path.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 2: Verify verbose, quiet, and trace terminal projections
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed doctor --verbose --no-animation`; confirm normal output is present and the full log
+   path is printed.
+4. Run `employed doctor --quiet --no-animation`; confirm informational tables/progress are hidden,
+   warnings or errors remain if present, and `full log:` is still printed.
+5. Run `employed doctor --trace --no-animation`; confirm debug mode is enabled. Operations with more
+   than one pipeline stage append `(+Nms)` to their stage lines.
+6. Open each printed log and confirm debug events exist even when the quiet terminal hid them.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Verify plain progress and the detection deadline safety nets
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test test/ui.test.ts test/detect.test.ts`.
+4. Confirm plain progress prints timestamped sequential stages with no spinner escapes and the
+   hanging detector test reports its active fetch stage, terminates at its deadline, and reports the
+   failure stage rather than hanging indefinitely.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Verify capture, planning, execution, and validation stage coverage
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test test/capture-analyze.test.ts test/generate-service.test.ts`.
+4. Confirm the bounded capture and four-attempt generation cases pass, including static-to-network
+   escalation, plan validation feedback, execution results, and manual-review exhaustion.
+5. Inspect the most recent `init-*.log` to confirm the workspace log remains valid JSONL.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: Verify multi-company isolation and logging degradation
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `node --import tsx --test --test-name-pattern="one company failing|unwritable log" test/run-service.test.ts test/log.test.ts`.
+4. Confirm one company failure does not abort the remaining run and an unwritable log target emits
+   one warning without crashing. During a real multi-company `employed run`, the same orchestration
+   renders `[n/total] Company — stage` and a completion sub-line for each company.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
