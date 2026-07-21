@@ -10,7 +10,7 @@ import { NodeProcessRunner } from '../ai/process.js';
 import type { AiProvider } from '../ai/types.js';
 import type { AppConfig, ProviderName } from '../config/schema.js';
 import type { Health, Repositories } from '../db/index.js';
-import { ScraperConfigSchema } from '../scrape/config.js';
+import { ScraperPlanSchema } from '../scrape/plan.js';
 import { EmailService, type EmailStatus } from './email.js';
 import { ScheduleService, type ScheduleStatus } from './schedule.js';
 
@@ -251,7 +251,10 @@ export class DoctorService {
         consecutiveFailures: company.consecutive_failures,
         confidence,
         level,
-        fix: `Run \`employed company generate "${company.name}"\` and then scan it.`,
+        fix:
+          company.health === 'manual-review'
+            ? `Inspect ~/.employed/debug for ${company.name}, then retry generation or add an ATS override.`
+            : `Run \`employed company generate "${company.name}"\` and then scan it.`,
       });
     }
     return { counts, issues };
@@ -359,7 +362,7 @@ function generatedConfidence(value: string | null): number | null {
     return null;
   }
   try {
-    const parsed = ScraperConfigSchema.safeParse(JSON.parse(value));
+    const parsed = ScraperPlanSchema.safeParse(JSON.parse(value));
     return parsed.success ? parsed.data.confidence : null;
   } catch {
     return null;
