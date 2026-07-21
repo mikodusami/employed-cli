@@ -1464,3 +1464,128 @@ afterward; do not reuse an earlier flow's state.
    `Airbnb.method` and `Airbnb.slug` fields.
 6. Run `rm -rf "$EMPLOYED_DIR"`.
 7. Run `unset EMPLOYED_DIR`.
+
+# Remediation — precise keyword matching and hard-exclude filtering
+
+Run `npm run build` first. Each flow starts from a fresh workspace and destroys it afterward; do
+not reuse an earlier flow's state. Several flows scrape the real, public Highspot Lever board
+(`https://jobs.lever.co/highspot`), the same fixture company used by earlier layer flows.
+
+### Flow 1: Prove word-boundary matching offline
+
+1. Run `npm run build`.
+2. Run `npm test -- --test-name-pattern="buildKeywordRegex|word-boundary"`.
+3. Confirm the suite passes, including: `ai` not firing inside "maintaining"/"domain"/"certain",
+   `api` not firing inside "capital"/"rapid", `sql` not firing inside "nosql", `staff` not firing
+   inside "staffing", and `ci/cd` still matching as a whole phrase (the punctuation edge case).
+4. Confirm `scoreJob only counts word-boundary hits: ai/api/sql substrings never inflate score`
+   passes — a description packed with those exact false-positive substrings scores `0`.
+
+### Flow 2: See the new indirect early-career keywords lift a score
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Open `$EMPLOYED_DIR/keywords.yaml` and confirm `title` includes `new college grad`,
+   `university grad`, `recent graduate`, and `class of 2026`, and `description` includes
+   `equivalent practical experience`, `bachelor's degree`, `0-2 years`, `no experience required`,
+   and `new grad program`, each under a comment explaining indirect early-career signals.
+4. Run `npm test -- --test-name-pattern="indirect early-career phrase"` and confirm it passes: a
+   description containing "or equivalent practical experience" fires that phrase and lifts score.
+5. Run `rm -rf "$EMPLOYED_DIR"`.
+6. Run `unset EMPLOYED_DIR`.
+
+### Flow 3: Auto-filter a real seniority-titled posting and see the reason
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Run `employed company add "Highspot" --url https://jobs.lever.co/highspot --no-animation --tier A`.
+4. Run `employed scan --company "Highspot" --no-animation`.
+5. Confirm the success line reports a nonzero `auto-filtered` count with a `(N keyword, M
+   location)` breakdown, for example `18 seen, 14 new, 4 (4 keyword, 0 location) auto-filtered`.
+6. Confirm none of the ranked jobs in the table below it have "Senior", "Principal", "Sr.
+   Director", or similar hard-excluded titles — those are the auto-filtered ones, not present.
+7. Run `rm -rf "$EMPLOYED_DIR"`.
+8. Run `unset EMPLOYED_DIR`.
+
+### Flow 4: Review auto-filtered jobs with `--show-filtered`, then restore one
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot as in Flow 3.
+4. Run `employed new --show-filtered --no-animation`.
+5. Confirm an "Auto-filtered today" table appears below the normal new-jobs listing, showing each
+   filtered job's id, title, location, and a reason like `hard-exclude title: principal`.
+6. Run `employed new --no-animation` (without the flag) and confirm the auto-filtered section does
+   not appear — the default view stays clean.
+7. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id FROM jobs WHERE filter_reason IS NOT NULL LIMIT 1;"`
+   to get one filtered job's id, then run `employed restore <jobId> --no-animation`.
+8. Confirm it reports success and names the job's title and its former reason.
+9. Run `employed restore <jobId> --no-animation` again with the same id and confirm it now refuses
+   with "was never auto-filtered — nothing to restore."
+10. Run `rm -rf "$EMPLOYED_DIR"`.
+11. Run `unset EMPLOYED_DIR`.
+
+### Flow 5: `restore` refuses cleanly on a manually dismissed job
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot as in Flow 3.
+4. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT id FROM jobs WHERE status = 'open' LIMIT 1;"`
+   to get an open (not auto-filtered) job's id.
+5. Run `employed dismiss <jobId> --no-animation`.
+6. Run `employed restore <jobId> --no-animation`.
+7. Confirm it refuses with "was dismissed manually, not auto-filtered — nothing to restore" rather
+   than silently reopening it.
+8. Run `rm -rf "$EMPLOYED_DIR"`.
+9. Run `unset EMPLOYED_DIR`.
+
+### Flow 6: Verify the location gate offline (block wins, unknown location is kept)
+
+1. Run `npm run build`.
+2. Run `npm test -- --test-name-pattern="location"`.
+3. Confirm the suite passes, including: a blocked location excludes and names the match; a
+   location matching a compound word (`Indianapolis` vs. a `india` block entry) is not excluded;
+   an unknown location is kept when `allowUnknownLocation: true`; a non-empty `allow` list excludes
+   anything matching neither `allow` nor `block`; and `block` wins even when the same location also
+   matches `allow`.
+
+### Flow 7: Confirm empty hardExclude/locations changes nothing (backward compatibility)
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Edit `$EMPLOYED_DIR/keywords.yaml`: set `hardExclude.title: []`, `hardExclude.description: []`,
+   and `locations.block: []` (leave `locations.allow: []` as scaffolded).
+4. Add and scan Highspot as in Flow 3.
+5. Confirm the success line reads `18 seen, 18 new` with no auto-filtered clause at all (it is
+   omitted, not printed as zero) and every previously-excluded title (Senior, Principal, Sr.
+   Director, and similar) now appears in the ranked jobs table.
+6. Run `rm -rf "$EMPLOYED_DIR"`.
+7. Run `unset EMPLOYED_DIR`.
+
+### Flow 8: See the rescore band-change diff after a matcher or keyword-list change
+
+1. Run `export EMPLOYED_DIR="$(mktemp -d)"`.
+2. Run `employed init --no-animation`.
+3. Add and scan Highspot as in Flow 3.
+4. Run `employed rescore --no-animation`.
+5. Confirm the output reads like `Re-scored N open jobs — X moved up, Y moved down` (0 and 0 the
+   first time, since nothing has changed since scoring).
+6. Run
+   `sqlite3 "$EMPLOYED_DIR/employed.db" "SELECT DISTINCT matched_kw FROM jobs WHERE matched_kw != '[]';"`
+   and confirm `ai` appears in several rows (Highspot's postings mention AI frequently).
+7. Edit `$EMPLOYED_DIR/keywords.yaml` and raise the `description` list's `ai` weight from `2` to a
+   much larger number (for example `30`), then run `employed rescore --no-animation` again.
+8. Confirm `X moved up` is now nonzero for the jobs whose band improved as a result.
+9. Run `rm -rf "$EMPLOYED_DIR"`.
+10. Run `unset EMPLOYED_DIR`.
+
+### Flow 9: Run the full offline suite for this remediation
+
+1. Run `npm run build`.
+2. Run `npm test`.
+3. Confirm `score-filter.test.ts` and the new cases in `score-engine.test.ts`,
+   `scrape-service.test.ts`, `rescore.test.ts`, and `db.test.ts` all pass — `buildKeywordRegex` and
+   `applyHardFilters` are exercised with no DB/IO in their own test files, matching the acceptance
+   criteria.

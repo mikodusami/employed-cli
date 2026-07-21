@@ -682,3 +682,67 @@ pathological pages—shares the same five-page limit and detection never escalat
 The detector seam now accepts `{ name, careers_url }` rather than a bare URL because overrides need
 stable identity as well as a crawl entry point. Company registration and healing both pass their
 existing company record through this seam; orchestration and persistence behavior remain unchanged.
+
+## 2026-07-20T20:30:47-04:00 — One word-boundary matcher for scoring and hard-exclude filtering
+
+`buildKeywordRegex` replaces raw `.includes()` substring matching in `scoreJob` and is reused
+verbatim by the new `applyHardFilters` gate — one matcher, one correctness bar, for both soft
+scoring and hard suppression. `\b` is defined relative to `\w`, not to the keyword's own
+characters, so a keyword containing a non-word character at its edge (`ci/cd`) still matches
+correctly: the boundary applies where the keyword touches surrounding text, not inside it. This
+was verified with a dedicated fixture rather than assumed. Since the regex already carries the `i`
+flag, the engine's separate `.toLowerCase()` calls on keywords became redundant and were removed;
+matching behavior against raw text is unchanged.
+
+## 2026-07-20T20:30:47-04:00 — Penalizing and suppressing are different mechanisms, not one config
+
+`negative` keywords remain purely a scoring penalty — a senior or out-of-region posting can still
+outscore the penalty and surface. `hardExclude`/`locations` are a separate, binary gate
+(`score/filter.ts`) that removes a disqualifying job from reports entirely, evaluated once per
+posting immediately after scoring and before upsert. Both schema sections default to fully
+permissive (empty lists, empty allow-list) so existing configs and fixtures are unaffected until a
+user opts in — verified directly: the fixture suite's "empty hardExclude/locations changes
+nothing" case exercises a job that would fail on every criterion (senior/staff/principal/director,
+phd required, security clearance, blocked location) and confirms it still surfaces unfiltered.
+
+## 2026-07-20T20:30:47-04:00 — Auto-filtered jobs are stored, not dropped, and never silently revived
+
+A hard-excluded posting is still upserted (preserving dedupe/history/retuning value) with
+`status='dismissed'` and `filter_reason` set to the specific match, e.g. `hard-exclude title:
+senior` or `location blocked: india`. `filter_reason` is the sole signal distinguishing a system
+auto-filter from a user's manual `dismiss` (which sets the same `status` but leaves this column
+null) — `restore` refuses cleanly on a manually-dismissed job rather than guessing intent.
+
+On every scrape, `jobs.upsert`'s `ON CONFLICT` clause only touches `status`/`filter_reason` when
+the stored row is currently `'open'` (`CASE WHEN jobs.status = 'open' THEN excluded.… ELSE
+jobs.…`). A job already dismissed — manually or by a prior auto-filter — is never silently reopened
+or re-labeled by a later scrape, even if the user's filter config changes in the meantime; explicit
+`restore` is the only way back to `'open'`. This was deliberately verified with a test that
+hard-excludes a job, then rescrapes with the offending term removed from config and asserts the job
+stays exactly as filtered.
+
+## 2026-07-20T20:30:47-04:00 — Auto-filtered counts are a per-scan snapshot, not a new-event diff
+
+`scan`/`run` report auto-filtered counts as "how many of what I saw this scan currently match a
+filter," split into keyword vs. location buckets by `filter_reason`'s prefix — not "how many became
+newly filtered this scan." A job that was already filtered yesterday and is filtered again today
+counts again, matching the precedent already set by `runs`' `broken` company count (a cumulative
+state read, not a diff). This keeps the signal honest about current filter aggressiveness without
+extra repository plumbing to track a "just transitioned" event that the spec never asked for.
+
+## 2026-07-20T20:30:47-04:00 — `import-hq` preserves the user's hardExclude/locations verbatim
+
+Legacy HQ backups only ever carry scoring weights (title/description/negative), never
+hard-exclude/location settings. `mergeKeywords` narrows its `incoming` merge source to just those
+three groups and copies `hardExclude`/`locations` from `current` untouched into the merged result,
+so importing an old backup can never silently wipe a user's filter configuration. Native
+version-1 snapshot import tolerates `jobs.filter_reason` being absent (pre-dating this remediation)
+via a schema default of `null`, keeping old exports importable.
+
+## 2026-07-20T20:30:47-04:00 — Rescore reports a band-change diff instead of a bare count
+
+`RescoreService.rescoreOpen` compares each job's stored band against its recomputed band and
+reports `bandUp`/`bandDown` counts (ranked A>B>C>D) alongside `updated`, so a matcher or
+keyword-list change has a visible before/after impact on already-stored jobs rather than a silent
+bulk update. A job with no prior band (never scored) is excluded from the diff — there is nothing
+meaningful to compare against yet.

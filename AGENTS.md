@@ -3,3 +3,4 @@
 - after every decison being made, update decisons.md with the timestamp, label of decision, and description.
 - update userflows.md with userflows to go through every layer that has been made.
 - Every stateful user flow must be isolated. Before a flow, run `export EMPLOYED_DIR="$(mktemp -d)"` followed by `employed init`; after it, run `rm -rf "$EMPLOYED_DIR"` and `unset EMPLOYED_DIR`. User-flow instructions must account for this lifecycle and must never rely on state from an earlier flow.
+- when something changes within the codebase, we need to update the docs
