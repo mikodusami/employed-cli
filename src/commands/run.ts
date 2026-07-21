@@ -8,6 +8,7 @@ import { describeAutoFiltered } from '../services/scrape.js';
 import { acquireRunLock, LockHeldError, type RunLock } from '../util/lock.js';
 import { ValidationError } from '../util/errors.js';
 import type { CommandContext } from './types.js';
+import { bindProgress } from './progress.js';
 
 interface RunCommandOptions {
   email?: boolean;
@@ -41,7 +42,8 @@ async function runOrchestration(
     throw error;
   }
 
-  const spinner = context.ui.spinner('Starting run').start();
+  let position = '';
+  const progress = bindProgress(context, 'Running employed', () => position);
   try {
     const service = new RunService({
       repositories: context.repos,
@@ -51,12 +53,15 @@ async function runOrchestration(
       config: context.config.loadApp(),
       keywords: context.config.loadKeywords(),
       onProgress: (current, total, company) => {
-        spinner.update(`[${current}/${total}] ${company}`);
+        position = `[${current}/${total}] ${company} — `;
+        progress.handle.step(`${position}starting`);
       },
+      onCompanyComplete: (summary) => progress.handle.substep(summary),
+      report: context.stages.report,
     });
     const tiers = options.tier ? parseTiers(options.tier) : undefined;
     const summary = await service.execute({ tiers, email: options.email });
-    spinner.succeed(
+    progress.handle.succeed(
       `Run complete: ${summary.companiesScanned} companies scanned, ${summary.jobsNew} new jobs, ` +
         `${summary.failures.length} failures`,
     );
@@ -70,9 +75,10 @@ async function runOrchestration(
       );
     }
   } catch (error: unknown) {
-    spinner.fail('Run failed');
+    progress.handle.fail('Run failed');
     throw error;
   } finally {
+    progress.release();
     lock.release();
   }
 }
