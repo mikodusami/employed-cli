@@ -46,19 +46,23 @@ export class DefaultAiRunner implements AiRunner {
         if (cached) {
           const parsed = parseResponse(cached.response, task.schema);
           if (parsed.success) {
+            this.debug(`AI cache hit: ${provider.name}/${task.templateId}`);
             return parsed.value as Result;
           }
           this.debug(`Ignoring invalid AI cache entry for ${provider.name}: ${parsed.issues}`);
         }
+        this.debug(`AI cache miss: ${provider.name}/${task.templateId}`);
       }
 
       const status = await provider.isAvailable();
       if (!status.available) {
+        this.debug(`AI provider unavailable: ${provider.name}`);
         failures.push(`${provider.name}: ${status.detail ?? 'unavailable'}`);
         continue;
       }
 
       try {
+        this.debug(`AI provider selected: ${provider.name}`);
         const value = await this.runAndValidate(provider, task);
         if (!task.noCache) {
           this.repositories.aiCache.upsert(
@@ -67,6 +71,7 @@ export class DefaultAiRunner implements AiRunner {
             this.now().toISOString(),
           );
         }
+        this.debug(`AI task validated: ${provider.name}/${task.templateId}`);
         return value;
       } catch (error: unknown) {
         if (error instanceof AiValidationError || error instanceof AiBudgetExceededError) {
