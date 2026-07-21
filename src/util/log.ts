@@ -186,7 +186,8 @@ function rotateLogs(directory: string, retentionDays: number, now: Date): void {
 }
 
 function formatTimestamp(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const iso = date.toISOString();
+  return `${iso.slice(0, 10)}-${iso.slice(11, 19).replace(/:/g, '')}`;
 }
 
 function safeCommand(value: string): string {
