@@ -34,7 +34,7 @@ test('logger writes scoped JSONL, filters console, and rotates old logs', () => 
   logger.child('capture').debug('request', { url: 'https://example.com' });
   logger.child('scrape:Meta').info('finished', { count: 34 });
 
-  assert.equal(logger.filePath?.endsWith('run-20260721-123456.log'), true);
+  assert.equal(logger.filePath?.endsWith('run-2026-07-21-123456.log'), true);
   assert.equal(existsSync(old), false);
   const events = readEvents(logger.filePath ?? '');
   assert.deepEqual(events.map(({ scope, level }) => [scope, level]), [
