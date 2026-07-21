@@ -65,6 +65,8 @@ export interface JobRow {
   status: JobStatus;
   first_seen: string;
   last_seen: string;
+  /** Set only on a system auto-filter (hard-exclude/location); null on a manual `dismiss`. */
+  filter_reason: string | null;
 }
 
 /** Stored application record. */

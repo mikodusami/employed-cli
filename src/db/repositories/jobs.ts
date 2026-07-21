@@ -1,7 +1,7 @@
 /** Provides prepared, intent-oriented access to discovered job records. */
 import type Database from 'better-sqlite3';
 
-import type { Band, JobRow } from '../types.js';
+import type { Band, JobRow, JobStatus } from '../types.js';
 
 /** Values required to insert or refresh a job. */
 export interface JobInsertInput {
@@ -17,6 +17,10 @@ export interface JobInsertInput {
   score?: number | null;
   band?: Band | null;
   matched_kw?: string | null;
+  /** Defaults to 'open'; the hard-exclude/location gate sets 'dismissed' on a new match. */
+  status?: JobStatus;
+  /** Set alongside `status: 'dismissed'` by the auto-filter; null for a normal open job. */
+  filter_reason?: string | null;
 }
 
 /** Backward-compatible name for callers created before normalization was introduced. */
@@ -46,10 +50,15 @@ export class JobRepository {
   private readonly upsertStatement: Database.Statement<[JobInsertInput], JobRow>;
   private readonly findNewSinceStatement: Database.Statement<[{ date: string }], JobRow>;
   private readonly dismissStatement: Database.Statement<[{ id: number }], Database.RunResult>;
+  private readonly restoreStatement: Database.Statement<[{ id: number }], Database.RunResult>;
   private readonly findByIdStatement: Database.Statement<[{ id: number }], JobRow>;
   private readonly listStatement: Database.Statement<[], JobRow>;
   private readonly listOpenStatement: Database.Statement<[], JobRow>;
   private readonly listOpenFirstSeenOnStatement: Database.Statement<[{ date: string }], JobRow>;
+  private readonly listAutoFilteredFirstSeenOnStatement: Database.Statement<
+    [{ date: string }],
+    JobRow
+  >;
   private readonly updateScoreStatement: Database.Statement<[JobScoreUpdate], Database.RunResult>;
   private readonly markClosedIfUnseenStatement: Database.Statement<
     [{ company_id: number; cutoff: string }],
@@ -63,16 +72,21 @@ export class JobRepository {
     this.upsertStatement = database.prepare(`
       INSERT INTO jobs (
         company_id, title, location, url, department, description,
-        first_seen, last_seen, dedupe_key, score, band, matched_kw
+        first_seen, last_seen, dedupe_key, score, band, matched_kw, status, filter_reason
       ) VALUES (
         @company_id, @title, @location, @url, @department, @description,
-        @first_seen, @last_seen, @dedupe_key, @score, @band, @matched_kw
+        @first_seen, @last_seen, @dedupe_key, @score, @band, @matched_kw, @status, @filter_reason
       )
       ON CONFLICT(company_id, dedupe_key) DO UPDATE SET
         last_seen = excluded.last_seen,
         score = excluded.score,
         band = excluded.band,
-        matched_kw = excluded.matched_kw
+        matched_kw = excluded.matched_kw,
+        status = CASE WHEN jobs.status = 'open' THEN excluded.status ELSE jobs.status END,
+        filter_reason = CASE
+          WHEN jobs.status = 'open' THEN excluded.filter_reason
+          ELSE jobs.filter_reason
+        END
       RETURNING *
     `);
     this.findNewSinceStatement = database.prepare(`
@@ -80,6 +94,9 @@ export class JobRepository {
     `);
     this.dismissStatement = database.prepare(`
       UPDATE jobs SET status = 'dismissed' WHERE id = @id
+    `);
+    this.restoreStatement = database.prepare(`
+      UPDATE jobs SET status = 'open', filter_reason = NULL WHERE id = @id
     `);
     this.findByIdStatement = database.prepare('SELECT * FROM jobs WHERE id = @id');
     this.listStatement = database.prepare('SELECT * FROM jobs ORDER BY id');
@@ -89,6 +106,11 @@ export class JobRepository {
     this.listOpenFirstSeenOnStatement = database.prepare(`
       SELECT * FROM jobs
       WHERE status = 'open' AND date(first_seen) = date(@date)
+      ORDER BY id
+    `);
+    this.listAutoFilteredFirstSeenOnStatement = database.prepare(`
+      SELECT * FROM jobs
+      WHERE filter_reason IS NOT NULL AND date(first_seen) = date(@date)
       ORDER BY id
     `);
     this.updateScoreStatement = database.prepare(`
@@ -103,7 +125,13 @@ export class JobRepository {
     `);
   }
 
-  /** Inserts a job or refreshes only its last-seen timestamp when already known. */
+  /**
+   * Inserts a job, or refreshes an existing one's score/status.
+   *
+   * @remarks On conflict, `status`/`filter_reason` only change when the stored row is currently
+   * 'open' — so a manually `dismiss`ed job, or one already auto-filtered, is never silently
+   * revived or re-labeled by a later scrape. The only way back to 'open' is explicit: `restore`.
+   */
   public upsert(input: JobInsertInput): UpsertJobResult {
     const identity = { company_id: input.company_id, dedupe_key: input.dedupe_key };
     const isNew = this.existsStatement.get(identity) === undefined;
@@ -115,6 +143,8 @@ export class JobRepository {
       score: input.score ?? null,
       band: input.band ?? null,
       matched_kw: input.matched_kw ?? null,
+      status: input.status ?? 'open',
+      filter_reason: input.filter_reason ?? null,
     };
     const job = this.upsertStatement.get(parameters);
     if (!job) {
@@ -148,6 +178,11 @@ export class JobRepository {
     return this.listOpenFirstSeenOnStatement.all({ date });
   }
 
+  /** Lists system auto-filtered jobs (`filter_reason` set) first discovered on one date. */
+  public listAutoFilteredFirstSeenOn(date: string): readonly JobRow[] {
+    return this.listAutoFilteredFirstSeenOnStatement.all({ date });
+  }
+
   /** Persists a score computed by the pure scoring engine. */
   public updateScore(input: JobScoreUpdate): JobRow {
     this.updateScoreStatement.run(input);
@@ -173,6 +208,22 @@ export class JobRepository {
   /** Marks a job as intentionally dismissed and returns the updated record. */
   public dismiss(id: number): JobRow {
     this.dismissStatement.run({ id });
+    const job = this.findByIdStatement.get({ id });
+    if (!job) {
+      throw new Error(`Job ${id} does not exist.`);
+    }
+    return job;
+  }
+
+  /**
+   * Reopens a job and clears `filter_reason` — the safety valve for an over-aggressive filter.
+   *
+   * @remarks Callers are expected to check `filter_reason IS NOT NULL` first (via `findById`) and
+   * refuse on a manually-dismissed job; this method itself applies unconditionally to whatever id
+   * it's given, matching the plain update/re-fetch pattern the rest of this repository uses.
+   */
+  public restore(id: number): JobRow {
+    this.restoreStatement.run({ id });
     const job = this.findByIdStatement.get({ id });
     if (!job) {
       throw new Error(`Job ${id} does not exist.`);

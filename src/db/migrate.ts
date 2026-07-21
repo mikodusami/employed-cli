@@ -12,7 +12,8 @@ export interface Migration {
   up(database: Database.Database): void;
 }
 
-const migrations: readonly Migration[] = [
+/** Exported so tests can bootstrap a real "at version N" database via a filtered subset. */
+export const migrations: readonly Migration[] = [
   {
     version: 1,
     up: (database) => database.exec(readFileSync(SCHEMA_SQL_PATH, 'utf8')),
@@ -30,6 +31,12 @@ const migrations: readonly Migration[] = [
           fetched_at TEXT NOT NULL
         );
       `),
+  },
+  {
+    version: 3,
+    // NULL except on a system auto-filter (hard-exclude/location); distinguishes that from a
+    // manual `dismiss`, which also sets status='dismissed' but leaves this column null.
+    up: (database) => database.exec('ALTER TABLE jobs ADD COLUMN filter_reason TEXT;'),
   },
 ];
 
